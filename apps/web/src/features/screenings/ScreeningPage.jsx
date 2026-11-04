@@ -14,17 +14,20 @@ import {
   UploadCloud,
   X,
 } from "lucide-react";
-
+import ScreeningResults from "./ScreeningResults";
 import {
   getRequisitions,
   createScreeningJob,
   uploadScreeningResumes,
   completeScreeningUpload,
   startScreening,
+  getScreeningJob,
+  getScreeningResults,
 } from "../../lib/api";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const MAX_FILES = 500;
+const ACTIVE_SCREENING_JOB_KEY = "talentlens_active_screening_job";
 
 function getPayload(response) {
   return response?.data ?? response;
@@ -45,16 +48,15 @@ function isSupportedFile(file) {
 
 export default function ScreeningPage() {
   const fileInputRef = useRef(null);
-
+const [restoringJob, setRestoringJob] = useState(true);
   const [requisitions, setRequisitions] = useState([]);
   const [selectedRequisition, setSelectedRequisition] = useState("");
   const [batchName, setBatchName] = useState("");
   const [topN, setTopN] = useState(10);
   const [files, setFiles] = useState([]);
-
+const [screeningStarted, setScreeningStarted] = useState(false);
   const [job, setJob] = useState(null);
   const [uploadSummary, setUploadSummary] = useState(null);
-
   const [loadingRequisitions, setLoadingRequisitions] = useState(true);
   const [creatingJob, setCreatingJob] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -87,10 +89,92 @@ export default function ScreeningPage() {
     loadRequisitions();
   }, []);
 
+useEffect(() => {
+  let cancelled = false;
+
+  async function restoreActiveJob() {
+    const savedJobId = sessionStorage.getItem(
+      ACTIVE_SCREENING_JOB_KEY
+    );
+
+    if (!savedJobId) {
+      setRestoringJob(false);
+      return;
+    }
+
+    try {
+      setError("");
+
+      // Fetch the saved batch from the backend.
+      const response = await getScreeningJob(savedJobId);
+      const payload = getPayload(response);
+
+      const restoredJob = payload?.job ?? payload;
+
+      if (!restoredJob?._id) {
+        throw new Error("Saved screening batch was not found.");
+      }
+
+      if (cancelled) return;
+
+      // Restore the active batch.
+      setJob(restoredJob);
+const hasStarted =  ["queued", "processing", "completed", "partially_failed", "failed"].includes(
+    restoredJob.status
+  )
+// Boolean(restoredJob.startedAt);
+
+setScreeningStarted(hasStarted);
+      // Restore the upload summary where the job response provides counts.
+      if (restoredJob.counts) {
+        setUploadSummary({
+          counts: restoredJob.counts,
+        });
+      }
+
+      // Restore the requisition selection if available.
+      if (restoredJob.requisitionId) {
+        const requisitionId =
+          typeof restoredJob.requisitionId === "object"
+            ? restoredJob.requisitionId._id
+            : restoredJob.requisitionId;
+
+        setSelectedRequisition(requisitionId);
+      }
+
+      setNotice("Your previous screening batch has been restored.");
+    } catch (err) {
+      if (cancelled) return;
+
+      console.error("Unable to restore screening batch:", err);
+
+      sessionStorage.removeItem(ACTIVE_SCREENING_JOB_KEY);
+      setJob(null);
+      setUploadSummary(null);
+      setError(
+        "Your previous screening batch could not be restored. You can create a new batch."
+      );
+    } finally {
+      if (!cancelled) {
+        setRestoringJob(false);
+      }
+    }
+  }
+
+  restoreActiveJob();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
+
+
   const selectedJob = requisitions.find(
     (item) => item._id === selectedRequisition,
   );
-
+const hasScreeningStarted =
+  screeningStarted ||
+  Boolean(job?.startedAt);
   function handleFileSelection(event) {
     const selectedFiles = Array.from(event.target.files || []);
     const validFiles = [];
@@ -179,6 +263,10 @@ export default function ScreeningPage() {
           "The server created no identifiable screening job. Check the create-job API response.",
         );
       }
+      sessionStorage.setItem(
+  ACTIVE_SCREENING_JOB_KEY,
+  jobId
+);
 
       setJob({ ...createdJob, _id: jobId });
       setCreatingJob(false);
@@ -208,7 +296,7 @@ export default function ScreeningPage() {
       setError("");
 
       await startScreening(job._id);
-
+setScreeningStarted(true);
       setNotice("AI screening has started. Results will appear as resumes are evaluated.");
     } catch (err) {
       setError(err.message || "Unable to start screening.");
@@ -224,13 +312,37 @@ export default function ScreeningPage() {
     setBatchName("");
     setTopN(10);
     setError("");
+    sessionStorage.removeItem(
+  ACTIVE_SCREENING_JOB_KEY
+);
     setNotice("");
     setSelectedRequisition("");
+    setScreeningStarted(false);
   }
 
   const summary = uploadSummary?.counts || uploadSummary || {};
-
+const activeStep =
+  screeningStarted ||
+  ["queued", "processing", "completed", "partially_failed", "failed"].includes(
+    job?.status
+  )
+    ? 2
+    : job
+      ? 1
+      : 0;
   return (
+     <div className="mx-auto max-w-7xl space-y-7 p-7">
+    {restoringJob ? (
+      <div className="flex min-h-[300px] flex-col items-center justify-center gap-3">
+        <LoaderCircle
+          size={30}
+          className="animate-spin text-[#536b45]"
+        />
+        <p className="text-sm text-stone-500">
+          Restoring your previous screening batch...
+        </p>
+      </div>
+    ) : (
     <div className="mx-auto max-w-7xl space-y-7 p-7">
       {/* Header */}
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -289,9 +401,11 @@ export default function ScreeningPage() {
           <div key={step.number} className="flex items-center gap-2">
             <span
               className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                index === 0
-                  ? "bg-[#263d2b] text-white"
-                  : "bg-stone-100 text-stone-500"
+                 index === activeStep
+      ? "bg-[#263d2b] text-white"
+      : index < activeStep
+        ? "bg-[#e9eee2] text-[#263d2b]"
+        : "bg-stone-100 text-stone-500"
               }`}
             >
               {step.number}
@@ -540,23 +654,28 @@ export default function ScreeningPage() {
               <h2 className="text-xl font-bold text-[#17251b]">
                 {job.name || batchName}
               </h2>
-              <p className="mt-1 text-sm text-stone-500">
+              {/* <p className="mt-1 text-sm text-stone-500">
                 Batch ID: {job._id}
-              </p>
+              </p> */}
             </div>
 
-            <button
-              onClick={handleStartScreening}
-              disabled={starting}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#263d2b] px-5 py-3 text-sm font-semibold text-white hover:bg-[#354e39] disabled:opacity-50"
-            >
-              {starting ? (
-                <LoaderCircle size={17} className="animate-spin" />
-              ) : (
-                <Sparkles size={17} />
-              )}
-              {starting ? "Starting..." : "Start AI screening"}
-            </button>
+       <button
+  onClick={handleStartScreening}
+  disabled={starting || hasScreeningStarted}
+  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#263d2b] px-5 py-3 text-sm font-semibold text-white hover:bg-[#354e39] disabled:cursor-not-allowed disabled:opacity-50"
+>
+  {starting ? (
+    <LoaderCircle size={17} className="animate-spin" />
+  ) : (
+    <Sparkles size={17} />
+  )}
+
+  {starting
+    ? "Starting..."
+    : hasScreeningStarted
+      ? "Screening already started"
+      : "Start AI screening"}
+</button>
           </div>
 
           <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -620,7 +739,14 @@ export default function ScreeningPage() {
             </div>
           </div>
         </section>
+
+
       )}
+      {screeningStarted && (
+  <ScreeningResults jobId={job._id} />
+)}
+    </div>
+    )}
     </div>
   );
 }

@@ -11,7 +11,7 @@ import {
   screeningModelName,
   ScreeningServiceError,
 } from "./screening.service.js";
-const CONCURRENCY = 2;
+const CONCURRENCY = 1;
 const POLL_INTERVAL_MS = 1500;
 const LOCK_TIMEOUT_MS = 2 * 60 * 1000;
 const HEARTBEAT_INTERVAL_MS = 30 * 1000;
