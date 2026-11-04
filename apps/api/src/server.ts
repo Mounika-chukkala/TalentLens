@@ -9,7 +9,7 @@ import { screeningRouter } from "./modules/screenings/screening.routes.js";
 // dotenv.config();
 import { requestLogger } from "./middleware/request-logger.middleware.js";
 import { errorHandler } from "./middleware/error.middleware.js";
-
+import { scorecardRouter } from "./modules/screenings/scorecard.routes.js";
 import {
   clientOrganizationRouter,
 } from "./modules/auth/client-organization.routes.js";
@@ -35,6 +35,7 @@ app.use(
 
   clientOrganizationRouter,
 );
+app.use("/api/scorecards", scorecardRouter);
 app.use("/api/invitations", invitationRouter);
 app.use("/api/submissions", candidateSubmissionRouter);
 app.use("/api/requisitions", requisitionRouter);
