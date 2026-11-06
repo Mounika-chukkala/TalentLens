@@ -14,12 +14,13 @@ const criterionSchema = new Schema(
       min: 0,
       max: 100,
     },
-    score: {
-      type: Number,
-      required: true,
-      min: 0,
-      max: 100,
-    },
+   score: {
+  type: Number,
+  required: false,
+  min: 0,
+  max: 100,
+  default: null,
+},
     evidence: {
       type: [String],
       default: [],
@@ -29,6 +30,16 @@ const criterionSchema = new Schema(
       default: "",
       maxlength: 2000,
     },
+    evidenceStatus: {
+  type: String,
+  enum: [
+    "demonstrated",
+    "partial",
+    "not_demonstrated",
+    "insufficient_evidence",
+  ],
+  required: true,
+},
   },
   { _id: false },
 );
@@ -49,12 +60,12 @@ const screeningSchema = new Schema(
       index: true,
     },
 
-    candidateId: {
-      type: Schema.Types.ObjectId,
-      ref: "Candidate",
-      required: true,
-      index: true,
-    },
+   resumeSubmissionId: {
+  type: Schema.Types.ObjectId,
+  ref: "ResumeSubmission",
+  required: true,
+  index: true,
+},
 
     status: {
       type: String,
@@ -146,6 +157,22 @@ const screeningSchema = new Schema(
       default: null,
       maxlength: 1000,
     },
+    evidenceCoverage: {
+  type: Number,
+  min: 0,
+  max: 100,
+  default: 0,
+},
+
+assessmentStatus: {
+  type: String,
+  enum: [
+    "complete",
+    "partial",
+    "insufficient_evidence",
+  ],
+  default: "complete",
+},
   },
   {
     timestamps: true,
@@ -156,18 +183,16 @@ const screeningSchema = new Schema(
 // A candidate can be evaluated once per batch.
 // The same candidate can still be evaluated in another batch or requisition.
 screeningSchema.index(
-  { screeningJobId: 1, candidateId: 1 },
+  { screeningJobId: 1, resumeSubmissionId: 1 },
   { unique: true },
 );
-
 // Efficient worker lookup.
 screeningSchema.index({ status: 1, nextRunAt: 1, createdAt: 1 });
 
 // Efficient ranked results lookup.
 screeningSchema.index({
-  screeningJobId: 1,
+  requisitionId: 1,
   status: 1,
   overallScore: -1,
 });
-
 export const Screening = model("Screening", screeningSchema);

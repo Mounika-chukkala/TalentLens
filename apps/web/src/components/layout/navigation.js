@@ -15,8 +15,7 @@ export const recruiterNavigation = [
   { id: "pipeline", label: "Hiring pipeline", icon: Activity },
   { id: "client-reviews", label: "Client reviews", icon: FileText },
 ];
-
 export const clientNavigation = [
   { id: "submissions", label: "Candidate submissions", icon: Users },
-  { id: "interviews", label: "Interviews", icon: Activity },
+  { id: "requisitions", label: "Requisitions", icon: BriefcaseBusiness },
 ];

@@ -10,6 +10,7 @@ import CandidatePipelinePage from "../candidates/CandidatePipelinePage";
 import {
   createRequisition,
   getCandidates,
+  inviteClientContact,
   getRequisitions,
 } from "../../lib/api";
 import ScreeningPage from "../screenings/ScreeningPage";
@@ -36,7 +37,9 @@ export default function RecruiterDashboard({ user, onSignOut }) {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createSaving, setCreateSaving] = useState(false);
   const [createError, setCreateError] = useState("");
-
+const [createNotice, setCreateNotice] = useState("");
+const [pendingInvitation, setPendingInvitation] = useState(null);
+const [retryingInvitation, setRetryingInvitation] = useState(false);
   async function loadRequisitions() {
     setLoadingRequisitions(true);
     setRequisitionError("");
@@ -75,9 +78,11 @@ export default function RecruiterDashboard({ user, onSignOut }) {
     return () => { cancelled = true; };
   }, []);
 
+
 async function handleCreateRequisition(event) {
   event.preventDefault();
   setCreateError("");
+  setCreateNotice("");
 
   const form = event.currentTarget;
   const formData = new FormData(form);
@@ -94,8 +99,20 @@ async function handleCreateRequisition(event) {
     noticePeriodDays: Number(formData.get("noticePeriodDays")),
   };
 
+  const invitation = {
+    email: String(formData.get("clientContactEmail") || "")
+      .trim()
+      .toLowerCase(),
+    clientOrganizationId: payload.clientOrganizationId,
+  };
+
   if (!payload.clientOrganizationId) {
     setCreateError("Please select a client organization.");
+    return;
+  }
+
+  if (!invitation.email) {
+    setCreateError("Please enter the client contact email.");
     return;
   }
 
@@ -109,13 +126,33 @@ async function handleCreateRequisition(event) {
   setCreateSaving(true);
 
   try {
+    // Step 1: Create the requisition.
     await createRequisition(payload);
 
+    // Step 2: Close the form and refresh requisitions.
     form.reset();
     setCreateModalOpen(false);
     setCurrentPage("requisitions");
 
     await loadRequisitions();
+
+    // Step 3: Send the client invitation separately.
+    try {
+      await inviteClientContact(invitation);
+
+      setPendingInvitation(null);
+      setCreateNotice(
+        `Requisition created successfully. Invitation sent to ${invitation.email}.`,
+      );
+    } catch (inviteError) {
+      // The requisition already exists. Save invitation details for retry.
+      setPendingInvitation(invitation);
+      setCreateNotice(
+        `Requisition created successfully, but the invitation to ${invitation.email} failed: ${
+          inviteError.message || "Unknown email error"
+        }`,
+      );
+    }
   } catch (error) {
     setCreateError(
       error instanceof Error
@@ -126,6 +163,31 @@ async function handleCreateRequisition(event) {
     setCreateSaving(false);
   }
 }
+
+
+
+async function handleRetryInvitation() {
+  if (!pendingInvitation || retryingInvitation) return;
+
+  setRetryingInvitation(true);
+
+  try {
+    await inviteClientContact(pendingInvitation);
+
+    setCreateNotice(
+      `Invitation successfully sent to ${pendingInvitation.email}.`,
+    );
+    setPendingInvitation(null);
+  } catch (error) {
+    setCreateNotice(
+      `Invitation retry failed: ${error.message || "Unable to send email."}`,
+    );
+  } finally {
+    setRetryingInvitation(false);
+  }
+}
+
+
   const metrics = [
     {
       label: "Active requisitions",
@@ -167,8 +229,15 @@ async function handleCreateRequisition(event) {
       );
     }
     if (currentPage === "requisitions") {
-      return <RequisitionsPage onCreateRequisition={openCreateModal} />;
-    }
+ return (
+    <RequisitionsPage
+      onCreateRequisition={openCreateModal}
+      createNotice={createNotice}
+      pendingInvitation={pendingInvitation}
+      retryingInvitation={retryingInvitation}
+      onRetryInvitation={handleRetryInvitation}
+    />
+  );    }
     if (currentPage === "candidates") {
       return (
         <CandidatesPage

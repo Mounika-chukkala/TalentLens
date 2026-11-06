@@ -7,7 +7,7 @@ import {
   requireAuth,
   requireRecruiter,
 } from "../../middleware/auth.middleware.js";
-
+import { generateScorecardSuggestions } from "./screening.service.js";
 export const scorecardRouter = Router();
 
 // Get the scorecard belonging to a requisition.
@@ -27,8 +27,10 @@ scorecardRouter.get(
         return;
       }
 
-      const requisition = await Requisition.findById(requisitionId).lean();
-
+const requisition = await Requisition.findOne({
+  _id: requisitionId,
+  createdBy: req.authUser!.id,
+}).lean();
       if (!requisition) {
         res.status(404).json({ error: "Requisition not found." });
         return;
@@ -49,7 +51,78 @@ scorecardRouter.get(
     }
   },
 );
+scorecardRouter.post(
+  "/:requisitionId/generate",
+  requireAuth,
+  requireRecruiter,
+  async (req, res) => {
+    try {
+      const { requisitionId } = req.params;
 
+      if (
+        typeof requisitionId !== "string" ||
+        !/^[a-f\d]{24}$/i.test(requisitionId)
+      ) {
+        res.status(400).json({
+          error: "Invalid requisition ID.",
+        });
+        return;
+      }
+
+      const requisition = await Requisition.findOne({
+  _id: requisitionId,
+  createdBy: req.authUser!.id,
+}).lean();
+      if (!requisition) {
+        res.status(404).json({
+          error: "Requisition not found.",
+        });
+        return;
+      }
+
+      // Never generate a replacement for an existing scorecard.
+      const existingScorecard = await Scorecard.findOne({
+        requisitionId,
+      }).lean();
+
+      if (existingScorecard) {
+        res.status(200).json({
+          message: "An existing scorecard was found.",
+          generated: false,
+          data: existingScorecard,
+        });
+        return;
+      }
+
+      const criteria = await generateScorecardSuggestions({
+        jobTitle: requisition.title,
+        jobDescription: requisition.description,
+        minExperience: requisition.minExperience,
+        maxExperience: requisition.maxExperience,
+        noticePeriodDays: requisition.noticePeriodDays,
+      });
+
+      res.status(200).json({
+        message: "AI scorecard suggestions generated successfully.",
+        generated: true,
+        data: {
+          requisitionId,
+          criteria,
+          totalWeight: 100,
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Failed to generate scorecard suggestions:",
+        error,
+      );
+
+      res.status(500).json({
+        error: "Unable to generate scorecard suggestions.",
+      });
+    }
+  },
+);
 // Create or update a requisition's scorecard.
 scorecardRouter.put(
   "/:requisitionId",
@@ -68,8 +141,10 @@ scorecardRouter.put(
         return;
       }
 
-      const requisition = await Requisition.findById(requisitionId).lean();
-
+const requisition = await Requisition.findOne({
+  _id: requisitionId,
+  createdBy: req.authUser!.id,
+}).lean();
       if (!requisition) {
         res.status(404).json({ error: "Requisition not found." });
         return;
@@ -115,42 +190,72 @@ scorecardRouter.put(
 
       // A scorecard becomes immutable after any batch for this
       // requisition has started screening.
-      const startedBatch = await ScreeningJob.exists({
-        requisitionId,
-        startedAt: { $ne: null },
-      });
+     // Check whether any screening batch has already started.
+const startedBatch = await ScreeningJob.exists({
+  requisitionId,
+  startedAt: { $ne: null },
+});
 
-      if (startedBatch) {
-        res.status(409).json({
-          error: "This scorecard is locked because screening has already started.",
-        });
-        return;
-      }
+if (startedBatch) {
+  res.status(409).json({
+    error: "This scorecard is locked because screening has already started.",
+  });
+  return;
+}
 
-      const scorecard = await Scorecard.findOneAndUpdate(
-        { requisitionId },
-        {
-          $set: {
-            criteria: criteria.map((item) => ({
-              name: item.name.trim(),
-              description: item.description.trim(),
-              weight: item.weight,
-            })),
-            totalWeight: 100,
-            generatedByAI: false,
-          },
-          $setOnInsert: {
-            requisitionId,
-            lockedAt: null,
-          },
-        },
-        {
-          new: true,
-          upsert: true,
-          runValidators: true,
-          setDefaultsOnInsert: true,
-        },
-      ).lean();
+const normalizedCriteria = criteria.map((item) => ({
+  name: item.name.trim(),
+  description: item.description.trim(),
+  weight: item.weight,
+}));
+
+// Atomically update only an unlocked scorecard.
+const scorecard = await Scorecard.findOneAndUpdate(
+  {
+    requisitionId,
+    lockedAt: null,
+  },
+  {
+    $set: {
+      criteria: normalizedCriteria,
+      totalWeight: 100,
+      generatedByAI: false,
+    },
+  },
+  {
+    new: true,
+    runValidators: true,
+  },
+).lean();
+
+if (!scorecard) {
+  // Check whether a scorecard already exists and is locked.
+  const existingScorecard = await Scorecard.findOne({
+    requisitionId,
+  }).lean();
+
+  if (existingScorecard) {
+    res.status(409).json({
+      error: "This scorecard is locked and cannot be modified.",
+    });
+    return;
+  }
+
+  // No scorecard exists yet, so create the first one.
+  const newScorecard = await Scorecard.create({
+    requisitionId,
+    criteria: normalizedCriteria,
+    totalWeight: 100,
+    generatedByAI: false,
+    lockedAt: null,
+  });
+
+  res.status(200).json({
+    message: "Scorecard saved successfully.",
+    data: newScorecard,
+  });
+  return;
+}
 
       res.status(200).json({
         message: "Scorecard saved successfully.",

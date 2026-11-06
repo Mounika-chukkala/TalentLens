@@ -1,4 +1,5 @@
 import { X } from "lucide-react";
+import { NavLink } from "react-router-dom";
 //  CircleHelp, Settings2,
 export default function WorkspaceSidebar({
   navigation,
@@ -18,36 +19,38 @@ export default function WorkspaceSidebar({
     .map((part) => part[0]?.toUpperCase())
     .join("");
 
-  function NavItems({ mobile = false }) {
-    return navigation.map(({ id, label, icon: Icon }) => {
-      const active = currentPage === id;
-      return (
-        <button
-          key={id}
-          type="button"
-          onClick={() => {
-            onNavigate(id);
-            if (mobile) onClose();
-          }}
-          aria-current={active ? "page" : undefined}
-          className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${
-            active
-              ? "bg-[#edf3e8] font-semibold text-[#24432b]"
-              : "text-stone-600 hover:bg-stone-50"
-          }`}
-        >
-          <Icon size={18} />
-          <span>{label}</span>
-          {id === "requisitions" && (
-            <span className="ml-auto rounded-md bg-stone-100 px-2 py-0.5 text-xs">
-              {loadingRequisitions ? "—" : requisitionCount}
-            </span>
-          )}
-        </button>
-      );
-    });
-  }
+function NavItems({ mobile = false }) {
+  return navigation.map(({ id, label, icon: Icon }) => {
+    const activeClass =
+      "bg-[#edf3e8] font-semibold text-[#24432b]";
 
+    const inactiveClass =
+      "text-stone-600 hover:bg-stone-50";
+
+    return (
+      <NavLink
+        key={id}
+        to={`/${roleLabel.toLowerCase()}/${id}`}
+        onClick={() => {
+          if (mobile) onClose();
+        }}
+        className={({ isActive }) =>
+          `flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${
+            isActive ? activeClass : inactiveClass
+          }`
+        }
+      >
+        <Icon size={18} />
+        <span>{label}</span>
+        {id === "requisitions" && (
+          <span className="ml-auto rounded-md bg-stone-100 px-2 py-0.5 text-xs">
+            {loadingRequisitions ? "—" : requisitionCount}
+          </span>
+        )}
+      </NavLink>
+    );
+  });
+}
   const Profile = () => (
     <div className="flex items-center gap-3 border-t border-stone-100 px-2 pt-4">
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e6e9df] text-xs font-semibold">

@@ -1,14 +1,65 @@
 
 import { model, Schema } from "mongoose";
 
-const candidateSubmissionSchema = new Schema(
+const candidateFeedbackSchema = new Schema(
   {
+    screeningId: {
+      type: Schema.Types.ObjectId,
+      ref: "Screening",
+      required: true,
+    },
+    resumeSubmissionId: {
+      type: Schema.Types.ObjectId,
+      ref: "ResumeSubmission",
+      required: true,
+    },
     candidateId: {
       type: Schema.Types.ObjectId,
       ref: "Candidate",
-      required: true,
-      index: true,
+      default: null,
     },
+    rank: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+    overallScore: {
+      type: Number,
+      required: true,
+    },
+    candidateSnapshot: {
+      fullName: { type: String, required: true },
+      email: { type: String, default: null },
+      skills: { type: [String], default: [] },
+      totalExperience: { type: Number, default: null },
+      resumeFileName: { type: String, default: null },
+    },
+    feedback: {
+      type: String,
+      enum: ["interested", "reject", "interview", null],
+      default: null,
+    },
+    feedbackNote: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
+      default: null,
+    },
+    feedbackBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    feedbackAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  { _id: true },
+);
+
+const candidateSubmissionSchema = new Schema(
+  {
     requisitionId: {
       type: Schema.Types.ObjectId,
       ref: "Requisition",
@@ -26,27 +77,34 @@ const candidateSubmissionSchema = new Schema(
       ref: "User",
       required: true,
     },
+    round: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+    title: {
+      type: String,
+      trim: true,
+      maxlength: 120,
+      default: null,
+    },
+    candidates: {
+      type: [candidateFeedbackSchema],
+      required: true,
+      validate: {
+        validator: (value: unknown[]) => value.length > 0,
+        message: "At least one candidate must be submitted.",
+      },
+    },
     status: {
       type: String,
-      enum: [
-        "submitted",
-        "shortlisted",
-        "rejected",
-        "interview_proposed",
-        "interview_scheduled",
-      ],
+      enum: ["submitted", "reviewed"],
       default: "submitted",
       index: true,
     },
-    rejectionReason: {
-      type: String,
-      trim: true,
-      maxlength: 1000,
-      default: null,
-    },
-    interviewSlot: {
+    submittedAt: {
       type: Date,
-      default: null,
+      default: Date.now,
     },
   },
   {
@@ -56,15 +114,14 @@ const candidateSubmissionSchema = new Schema(
 );
 
 candidateSubmissionSchema.index(
-  { candidateId: 1, requisitionId: 1 },
+  { requisitionId: 1, round: 1 },
   { unique: true },
 );
 
 candidateSubmissionSchema.index({
   clientOrganizationId: 1,
   requisitionId: 1,
-  status: 1,
-  createdAt: -1,
+  submittedAt: -1,
 });
 
 export const CandidateSubmission = model(

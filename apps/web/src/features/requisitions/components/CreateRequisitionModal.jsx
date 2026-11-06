@@ -227,6 +227,22 @@ export default function CreateRequisitionModal({
               )}
             </div>
 
+<label className="text-sm font-medium">
+  Client contact email *
+  <input
+    name="clientContactEmail"
+    type="email"
+    required
+    maxLength={254}
+    placeholder="e.g. hiring@company.com"
+    autoComplete="email"
+    className="mt-2 w-full rounded-lg border border-stone-200 px-3 py-2.5 font-normal outline-none focus:border-[#55734b] focus:ring-2 focus:ring-[#55734b]/15"
+  />
+  <span className="mt-1 block text-xs font-normal text-stone-500">
+    An invitation to access the client portal will be sent to this address.
+  </span>
+</label>
+
             <label className="text-sm font-medium">
               Location *
               <input

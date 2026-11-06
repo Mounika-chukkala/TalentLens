@@ -9,8 +9,14 @@ import {
   RefreshCw,
 } from "lucide-react";
 
-export default function RequisitionsPage({ onCreateRequisition }) {
-  const [requisitions, setRequisitions] = useState([]);
+export default function RequisitionsPage({
+  onCreateRequisition,
+  createNotice,
+  pendingInvitation,
+  retryingInvitation,
+  onRetryInvitation,
+}) {
+    const [requisitions, setRequisitions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -62,6 +68,28 @@ export default function RequisitionsPage({ onCreateRequisition }) {
   return (
     <main className="min-w-0 flex-1 bg-[#f7f8f5] px-5 py-8 sm:px-8">
       <div className="mx-auto max-w-7xl">
+
+      
+{createNotice && (
+  <div
+    role="status"
+    className="mb-5 rounded-xl border border-stone-200 bg-white p-4"
+  >
+    <p className="text-sm text-stone-700">{createNotice}</p>
+
+    {pendingInvitation && (
+      <button
+        type="button"
+        onClick={onRetryInvitation}
+        disabled={retryingInvitation}
+        className="mt-3 rounded-lg bg-[#17251b] px-4 py-2 text-sm font-semibold text-white hover:bg-[#2b4030] disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {retryingInvitation ? "Sending invitation..." : "Retry invitation"}
+      </button>
+    )}
+  </div>
+)}
+
         <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
           <div>
             {/* <p className="text-sm text-stone-500">

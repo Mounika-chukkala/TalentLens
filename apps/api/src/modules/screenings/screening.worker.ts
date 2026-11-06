@@ -1,7 +1,7 @@
 
 import { randomUUID } from "node:crypto";
-
-import { Candidate } from "../candidates/candidate.model.js";
+import { Scorecard } from "./scorecard.model.js";
+import { ResumeSubmission } from "./resume-submission.model.js";
 import { Requisition } from "../requisitions/requisition.model.js";
 import { ScreeningJob } from "./screening-job.model.js";
 import { Screening } from "./screening.model.js";
@@ -252,40 +252,48 @@ async function processScreening(
   heartbeat.unref();
 
   try {
-    const [candidate, requisition] = await Promise.all([
-      Candidate.findById(screening.candidateId)
-        .select("+extractedText")
-        .lean(),
+  const [submission, requisition, scorecard] = await Promise.all([
+  ResumeSubmission.findById(screening.resumeSubmissionId)
+    .select("+extractedText")
+    .lean(),
+  Requisition.findById(screening.requisitionId).lean(),
+  Scorecard.findOne({
+    requisitionId: screening.requisitionId,
+  }).lean(),
+]);
 
-      Requisition.findById(screening.requisitionId).lean(),
-    ]);
-
-    if (!candidate) {
-      throw new Error("Candidate record not found.");
-    }
+    if (!submission) {
+  throw new Error("Resume submission not found.");
+}
 
     if (!requisition) {
       throw new Error("Requisition record not found.");
     }
+    if (!scorecard || !scorecard.criteria?.length) {
+  throw new Error(
+    "A valid evaluation scorecard was not found for this requisition.",
+  );
+}
 
-    if (!candidate.extractedText?.trim()) {
-      throw new Error("Candidate resume text is unavailable.");
+    if (!submission.extractedText?.trim()) {
+      throw new Error("Resume text is unavailable.");
     }
 
-    if (candidate.extractedText.length > 60_000) {
+    if (submission.extractedText.length > 60_000) {
       throw new Error(
         "Resume text exceeds the screening limit.",
       );
     }
 
-    const result = await evaluateResume({
-      resumeText: candidate.extractedText,
-      jobTitle: requisition.title,
-      jobDescription: requisition.description,
-      minExperience: requisition.minExperience,
-      maxExperience: requisition.maxExperience,
-      noticePeriodDays: requisition.noticePeriodDays,
-    });
+  const result = await evaluateResume({
+  resumeText: submission.extractedText,
+  jobTitle: requisition.title,
+  jobDescription: requisition.description,
+  minExperience: requisition.minExperience,
+  maxExperience: requisition.maxExperience,
+  noticePeriodDays: requisition.noticePeriodDays,
+  scorecardCriteria: scorecard.criteria,
+});
 
     const updated = await Screening.findOneAndUpdate(
       {

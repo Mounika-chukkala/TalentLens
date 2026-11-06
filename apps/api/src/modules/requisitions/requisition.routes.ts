@@ -37,12 +37,14 @@ const createRequisitionSchema = z
 requisitionRouter.get("/", requireAuth, async (req, res) => {
   try {
     const filter =
-      req.authUser!.role === "recruiter"
-        ? {}
-        : {
-            clientOrganizationId:
-              req.authUser!.clientOrganizationId,
-          };
+  req.authUser!.role === "recruiter"
+    ? {
+        createdBy: new mongoose.Types.ObjectId(req.authUser!.id),
+      }
+    : {
+        clientOrganizationId:
+          req.authUser!.clientOrganizationId,
+      };
 
     const requisitions = await Requisition.find(filter)
       .sort({ createdAt: -1 })
@@ -104,12 +106,12 @@ requisitionRouter.post(
         ...requisitionData
       } = parsed.data;
 
-      const requisition = await Requisition.create({
-        ...requisitionData,
-        clientName: clientOrganization.name,
-        clientOrganizationId: clientOrganization._id,
-      });
-
+const requisition = await Requisition.create({
+  ...requisitionData,
+  clientName: clientOrganization.name,
+  clientOrganizationId: clientOrganization._id,
+  createdBy: new mongoose.Types.ObjectId(req.authUser!.id),
+});
       res.status(201).json({
         message: "Requisition created successfully",
         data: requisition,

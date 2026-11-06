@@ -15,6 +15,11 @@ const requisitionSchema = new Schema(
       trim: true,
       maxlength: 120,
     },
+    createdBy: {
+  type: Schema.Types.ObjectId,
+  required: true,
+  index: true,
+},
     location: {
       type: String,
       required: true,
