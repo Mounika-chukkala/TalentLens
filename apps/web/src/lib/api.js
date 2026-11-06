@@ -39,6 +39,15 @@ export async function getRequisitions() {
   return apiRequest("/requisitions");
 }
 
+export async function getRequisitionById(requisitionId) {
+  const result = await apiRequest(
+    `/requisitions/${requisitionId}`
+  );
+
+  return result.data;
+}
+
+
 export async function createRequisition(requisition) {
   const result = await apiRequest("/requisitions", {
     method: "POST",

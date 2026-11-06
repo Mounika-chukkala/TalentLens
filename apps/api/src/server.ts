@@ -18,7 +18,7 @@ import { candidateSubmissionRouter } from "./modules/candidates/candidate-submis
 import { invitationRouter } from "./modules/auth/invitation.routes.js";
 const app = express();
 const port = Number(process.env.PORT) || 5000;
-
+console.log("WEB_ORIGIN:", process.env.WEB_ORIGIN);
 app.use(
   cors({
     origin: process.env.WEB_ORIGIN || "http://localhost:5173",

@@ -1,11 +1,25 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
+
+import {
   getClientSubmissions,
+  getRequisitions,
+  getRequisitionById,
   updateClientCandidateFeedback,
 } from "../../lib/api";
+
 import WorkspaceLayout from "../../layouts/WorkspaceLayout";
 import { clientNavigation } from "../../components/layout/navigation";
+import ClientRequisitions from "./ClientRequisitions";
+import CandidateSubmissionCard from "./CandidateSubmissionCard";
 
 const feedbackOptions = [
   {
@@ -57,12 +71,7 @@ function FeedbackBadge({ value }) {
   );
 }
 
-function CandidateCard({
-  candidate,
-  submissionId,
-  onFeedback,
-  saving,
-}) {
+function CandidateCard({ candidate, submissionId, onFeedback, saving }) {
   const snapshot = candidate.candidateSnapshot || {};
   const [feedbackNote, setFeedbackNote] = useState(
     candidate.feedbackNote || "",
@@ -71,12 +80,7 @@ function CandidateCard({
   const selectedFeedback = candidate.feedback || null;
 
   const handleFeedback = async (feedback) => {
-    await onFeedback(
-      submissionId,
-      candidate._id,
-      feedback,
-      feedbackNote,
-    );
+    await onFeedback(submissionId, candidate._id, feedback, feedbackNote);
   };
 
   return (
@@ -181,18 +185,210 @@ function CandidateCard({
   );
 }
 
+function ClientSubmissions({
+  submissions,
+  loading,
+  error,
+  loadSubmissions,
+  handleFeedback,
+  savingCandidateId,
+  feedbackError,
+}) {
+  return (
+    <>
+      <div className="mt-2 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div>
+          <h2 className="text-2xl font-semibold text-stone-900">
+            Candidate submissions
+          </h2>
+          <p className="mt-1 text-sm text-stone-500">
+            Review candidates submitted by your recruitment team.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={loadSubmissions}
+          disabled={loading}
+          className="rounded-lg border border-stone-200 bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
+        >
+          {loading ? "Refreshing..." : "Refresh"}
+        </button>
+      </div>
+
+      <section className="mt-7">
+        {loading ? (
+          <div className="rounded-xl border border-stone-200 bg-white p-10 text-center text-sm text-stone-500">
+            Loading candidate submissions...
+          </div>
+        ) : error ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-5">
+            <p className="text-sm text-red-700">{error}</p>
+            <button
+              type="button"
+              onClick={loadSubmissions}
+              className="mt-3 text-sm font-semibold text-red-800 underline"
+            >
+              Try again
+            </button>
+          </div>
+        ) : submissions.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-stone-300 bg-white p-12 text-center">
+            <h3 className="font-semibold text-stone-800">
+              No candidates submitted yet
+            </h3>
+            <p className="mt-2 text-sm text-stone-500">
+              Candidates shortlisted by your recruitment team will appear here.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-stone-200 bg-white p-4">
+                <p className="text-xs text-stone-500">Submission rounds</p>
+                <p className="mt-1 text-2xl font-semibold text-stone-900">
+                  {submissions.length}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-stone-200 bg-white p-4">
+                <p className="text-xs text-stone-500">Candidates received</p>
+                <p className="mt-1 text-2xl font-semibold text-stone-900">
+                  {submissions.reduce(
+                    (total, item) => total + (item.candidates?.length || 0),
+                    0,
+                  )}
+                </p>
+              </div>
+
+              <div className="col-span-2 rounded-xl border border-stone-200 bg-white p-4 sm:col-span-1">
+                <p className="text-xs text-stone-500">Awaiting feedback</p>
+                <p className="mt-1 text-2xl font-semibold text-amber-600">
+                  {submissions.reduce(
+                    (total, item) =>
+                      total +
+                      (item.candidates || []).filter(
+                        (candidate) => !candidate.feedback,
+                      ).length,
+                    0,
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {feedbackError && (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {feedbackError}
+              </div>
+            )}
+
+            <div className="space-y-6">
+              {submissions.map((submission) => (
+                <section
+                  key={submission._id}
+                  className="overflow-hidden rounded-xl border border-stone-200 bg-white"
+                >
+                  <div className="border-b border-stone-100 bg-stone-50 p-5">
+                    <div className="flex flex-col justify-between gap-3 sm:flex-row">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-[#55734b]">
+                          {submission.requisitionId?.title || "Requisition"}
+                        </p>
+                        <h3 className="mt-1 text-lg font-semibold text-stone-900">
+                          {submission.title ||
+                            `Submission Round ${submission.round}`}
+                        </h3>
+                        <p className="mt-1 text-xs text-stone-500">
+                          Round {submission.round} · Submitted{" "}
+                          {formatDate(submission.submittedAt)}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full bg-stone-200 px-3 py-1 text-xs font-medium capitalize text-stone-700">
+                          {submission.status || "submitted"}
+                        </span>
+                        <span className="text-sm text-stone-500">
+                          {submission.candidates?.length || 0} candidates
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 p-4 sm:p-5">
+                    {submission.candidates?.map((candidate) => (
+                      <CandidateCard
+                        key={candidate._id}
+                        candidate={candidate}
+                        submissionId={submission._id}
+                        onFeedback={handleFeedback}
+                        saving={savingCandidateId === candidate._id}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+    </>
+  );
+}
+
+function ClientRequisitionDetail({
+  requisitions,
+  submissions,
+  selectedRequisition,
+  detailLoading,
+  detailError,
+  loadRequisitionDetail,
+  handleFeedback,
+  savingCandidateId,
+}) {
+  const { requisitionId } = useParams();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (requisitionId) {
+      loadRequisitionDetail(requisitionId);
+    }
+  }, [requisitionId, loadRequisitionDetail]);
+
+  return (
+    <ClientRequisitions
+      mode="detail"
+      requisitions={requisitions}
+      submissions={submissions}
+      selectedRequisition={selectedRequisition}
+      selectedRequisitionId={requisitionId}
+      detailLoading={detailLoading}
+      detailError={detailError}
+      loadRequisitionDetail={loadRequisitionDetail}
+      goBackToRequisitions={() => navigate("/client/requisitions")}
+      handleFeedback={handleFeedback}
+      savingCandidateId={savingCandidateId}
+    />
+  );
+}
+
 export default function ClientDashboard({ user, onSignOut }) {
-  const [currentPage, setCurrentPage] = useState("submissions");
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [savingCandidateId, setSavingCandidateId] = useState(null);
   const [feedbackError, setFeedbackError] = useState("");
 
-  const pageTitle =
-    currentPage === "interviews"
-      ? "Interviews"
-      : "Candidate submissions";
+  const [requisitions, setRequisitions] = useState([]);
+  const [requisitionsLoading, setRequisitionsLoading] = useState(false);
+  const [requisitionsError, setRequisitionsError] = useState("");
+
+  const [selectedRequisition, setSelectedRequisition] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
 
   const loadSubmissions = useCallback(async () => {
     try {
@@ -208,9 +404,39 @@ export default function ClientDashboard({ user, onSignOut }) {
     }
   }, []);
 
+  const loadRequisitions = useCallback(async () => {
+    try {
+      setRequisitionsLoading(true);
+      setRequisitionsError("");
+
+      const result = await getRequisitions();
+      setRequisitions(Array.isArray(result.data) ? result.data : []);
+    } catch (err) {
+      setRequisitionsError(err.message || "Unable to load requisitions.");
+    } finally {
+      setRequisitionsLoading(false);
+    }
+  }, []);
+
+  const loadRequisitionDetail = useCallback(async (requisitionId) => {
+    try {
+      setDetailLoading(true);
+      setDetailError("");
+      setSelectedRequisition(null);
+
+      const data = await getRequisitionById(requisitionId);
+      setSelectedRequisition(data);
+    } catch (err) {
+      setDetailError(err.message || "Unable to load requisition details.");
+    } finally {
+      setDetailLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadSubmissions();
-  }, [loadSubmissions]);
+    loadRequisitions();
+  }, [loadSubmissions, loadRequisitions]);
 
   const handleFeedback = async (
     submissionId,
@@ -222,11 +448,10 @@ export default function ClientDashboard({ user, onSignOut }) {
       setSavingCandidateId(candidateFeedbackId);
       setFeedbackError("");
 
-      await updateClientCandidateFeedback(
-        submissionId,
-        candidateFeedbackId,
-        { feedback, feedbackNote },
-      );
+      await updateClientCandidateFeedback(submissionId, candidateFeedbackId, {
+        feedback,
+        feedbackNote,
+      });
 
       setSubmissions((previous) =>
         previous.map((submission) => {
@@ -261,173 +486,115 @@ export default function ClientDashboard({ user, onSignOut }) {
     }
   };
 
+  const currentPath = location.pathname.replace(/\/$/, "") || "/client/submissions";
+
+  const pageTitle = currentPath.startsWith("/client/requisitions/")
+    ? selectedRequisition?.title || "Requisition details"
+    : currentPath === "/client/requisitions"
+      ? "Requisitions"
+      : "Candidate submissions";
+
   return (
     <WorkspaceLayout
       navigation={clientNavigation}
-      currentPage={currentPage}
-      onNavigate={setCurrentPage}
       user={user}
       roleLabel="Client"
       onSignOut={onSignOut}
       pageTitle={pageTitle}
+      requisitionCount={requisitions.length}
+      loadingRequisitions={requisitionsLoading}
     >
       <main className="mx-auto max-w-6xl p-5 md:p-10">
         <p className="text-xs font-semibold uppercase tracking-widest text-[#55734b]">
           Client portal
         </p>
 
-        <div className="mt-2 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-          <div>
-            <h2 className="text-2xl font-semibold text-stone-900">
-              {pageTitle}
-            </h2>
-            <p className="mt-1 text-sm text-stone-500">
-              Review candidates submitted by your recruitment team.
-            </p>
-          </div>
+        <Routes>
+          <Route
+            path="/"
+            element={<Navigate to="/client/submissions" replace />}
+          />
 
-          {currentPage === "submissions" && (
-            <button
-              type="button"
-              onClick={loadSubmissions}
-              disabled={loading}
-              className="rounded-lg border border-stone-200 bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
-            >
-              {loading ? "Refreshing..." : "Refresh"}
-            </button>
-          )}
-        </div>
+          <Route
+            path="/client"
+            element={<Navigate to="/client/submissions" replace />}
+          />
 
-        {currentPage === "submissions" ? (
-          <section className="mt-7">
-            {loading ? (
-              <div className="rounded-xl border border-stone-200 bg-white p-10 text-center text-sm text-stone-500">
-                Loading candidate submissions...
-              </div>
-            ) : error ? (
-              <div className="rounded-xl border border-red-200 bg-red-50 p-5">
-                <p className="text-sm text-red-700">{error}</p>
-                <button
-                  type="button"
-                  onClick={loadSubmissions}
-                  className="mt-3 text-sm font-semibold text-red-800 underline"
-                >
-                  Try again
-                </button>
-              </div>
-            ) : submissions.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-stone-300 bg-white p-12 text-center">
-                <h3 className="font-semibold text-stone-800">
-                  No candidates submitted yet
-                </h3>
-                <p className="mt-2 text-sm text-stone-500">
-                  Candidates shortlisted by your recruitment team will appear here.
-                </p>
-              </div>
-            ) : (
+          <Route
+            path="/client/submissions"
+            element={
+              <ClientSubmissions
+                submissions={submissions}
+                loading={loading}
+                error={error}
+                loadSubmissions={loadSubmissions}
+                handleFeedback={handleFeedback}
+                savingCandidateId={savingCandidateId}
+                feedbackError={feedbackError}
+              />
+            }
+          />
+
+          <Route
+            path="/client/requisitions"
+            element={
               <>
-                <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  <div className="rounded-xl border border-stone-200 bg-white p-4">
-                    <p className="text-xs text-stone-500">Submission rounds</p>
-                    <p className="mt-1 text-2xl font-semibold text-stone-900">
-                      {submissions.length}
+                <div className="mt-2 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+                  <div>
+                    <h2 className="text-2xl font-semibold text-stone-900">
+                      Requisitions
+                    </h2>
+                    <p className="mt-1 text-sm text-stone-500">
+                      Explore job openings assigned to your organization.
                     </p>
                   </div>
 
-                  <div className="rounded-xl border border-stone-200 bg-white p-4">
-                    <p className="text-xs text-stone-500">Candidates received</p>
-                    <p className="mt-1 text-2xl font-semibold text-stone-900">
-                      {submissions.reduce(
-                        (total, item) =>
-                          total + (item.candidates?.length || 0),
-                        0,
-                      )}
-                    </p>
-                  </div>
-
-                  <div className="col-span-2 rounded-xl border border-stone-200 bg-white p-4 sm:col-span-1">
-                    <p className="text-xs text-stone-500">Awaiting feedback</p>
-                    <p className="mt-1 text-2xl font-semibold text-amber-600">
-                      {submissions.reduce(
-                        (total, item) =>
-                          total +
-                          (item.candidates || []).filter(
-                            (candidate) => !candidate.feedback,
-                          ).length,
-                        0,
-                      )}
-                    </p>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={loadRequisitions}
+                    disabled={requisitionsLoading}
+                    className="rounded-lg border border-stone-200 bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
+                  >
+                    {requisitionsLoading ? "Refreshing..." : "Refresh"}
+                  </button>
                 </div>
 
-                {feedbackError && (
-                  <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                    {feedbackError}
-                  </div>
-                )}
-
-                <div className="space-y-6">
-                  {submissions.map((submission) => (
-                    <section
-                      key={submission._id}
-                      className="overflow-hidden rounded-xl border border-stone-200 bg-white"
-                    >
-                      <div className="border-b border-stone-100 bg-stone-50 p-5">
-                        <div className="flex flex-col justify-between gap-3 sm:flex-row">
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-[#55734b]">
-                              {submission.requisitionId?.title ||
-                                "Requisition"}
-                            </p>
-                            <h3 className="mt-1 text-lg font-semibold text-stone-900">
-                              {submission.title ||
-                                `Submission Round ${submission.round}`}
-                            </h3>
-                            <p className="mt-1 text-xs text-stone-500">
-                              Round {submission.round} · Submitted{" "}
-                              {formatDate(submission.submittedAt)}
-                            </p>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <span className="rounded-full bg-stone-200 px-3 py-1 text-xs font-medium capitalize text-stone-700">
-                              {submission.status || "submitted"}
-                            </span>
-                            <span className="text-sm text-stone-500">
-                              {submission.candidates?.length || 0} candidates
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="space-y-4 p-4 sm:p-5">
-                        {submission.candidates?.map((candidate) => (
-                          <CandidateCard
-                            key={candidate._id}
-                            candidate={candidate}
-                            submissionId={submission._id}
-                            onFeedback={handleFeedback}
-                            saving={savingCandidateId === candidate._id}
-                          />
-                        ))}
-                      </div>
-                    </section>
-                  ))}
-                </div>
+                <ClientRequisitions
+                  mode="list"
+                  requisitions={requisitions}
+                  requisitionsLoading={requisitionsLoading}
+                  requisitionsError={requisitionsError}
+                  loadRequisitions={loadRequisitions}
+                  submissions={submissions}
+                  openRequisition={(id) =>
+                    navigate(`/client/requisitions/${id}`)
+                  }
+                />
               </>
-            )}
-          </section>
-        ) : (
-          <section className="mt-7 rounded-xl border border-stone-200 bg-white p-8">
-            <h3 className="font-semibold text-stone-800">
-              Interview schedule
-            </h3>
-            <p className="mt-2 text-sm text-stone-500">
-              Interview scheduling is not connected yet. Candidate feedback
-              marked as Interview is currently recorded in the submission.
-            </p>
-          </section>
-        )}
+            }
+          />
+
+          <Route
+            path="/client/requisitions/:requisitionId"
+            element={
+              <ClientRequisitionDetail
+                requisitions={requisitions}
+                submissions={submissions}
+                selectedRequisition={selectedRequisition}
+                detailLoading={detailLoading}
+                detailError={detailError}
+                loadRequisitionDetail={loadRequisitionDetail}
+                handleFeedback={handleFeedback}
+                savingCandidateId={savingCandidateId}
+              />
+            }
+          />
+
+          <Route
+            path="*"
+            element={<Navigate to="/client/submissions" replace />}
+          />
+        </Routes>
       </main>
     </WorkspaceLayout>
   );

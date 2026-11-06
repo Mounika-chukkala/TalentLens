@@ -64,6 +64,52 @@ requisitionRouter.get("/", requireAuth, async (req, res) => {
   }
 });
 
+ // GET a single requisition
+requisitionRouter.get("/:id", requireAuth, async (req, res) => {
+  try {
+const id = String(req.params.id);
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      res.status(400).json({
+        error: "VALIDATION_ERROR",
+        message: "Invalid requisition ID.",
+      });
+      return;
+    }
+
+    const filter =
+      req.authUser!.role === "recruiter"
+        ? {
+            _id: new mongoose.Types.ObjectId(id),
+            createdBy: new mongoose.Types.ObjectId(req.authUser!.id),
+          }
+        : {
+            _id: new mongoose.Types.ObjectId(id),
+            clientOrganizationId: req.authUser!.clientOrganizationId,
+          };
+
+    const requisition = await Requisition.findOne(filter).lean();
+
+    if (!requisition) {
+      res.status(404).json({
+        error: "REQUISITION_NOT_FOUND",
+        message: "Requisition not found.",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      data: requisition,
+    });
+  } catch (error) {
+    console.error("Failed to retrieve requisition:", error);
+
+    res.status(500).json({
+      error: "INTERNAL_SERVER_ERROR",
+      message: "Could not retrieve requisition.",
+    });
+  }
+});
+
 // CREATE requisition
 requisitionRouter.post(
   "/",
@@ -71,7 +117,6 @@ requisitionRouter.post(
   requireRecruiter,
   async (req, res) => {
     const parsed = createRequisitionSchema.safeParse(req.body);
-
     if (!parsed.success) {
       res.status(400).json({
         error: "VALIDATION_ERROR",

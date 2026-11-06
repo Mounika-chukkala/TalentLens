@@ -1,53 +1,82 @@
+
 import { useEffect, useState } from "react";
-import { Activity, BriefcaseBusiness, CalendarDays, Users, UserRoundCheck } from "lucide-react";
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
+
+import {
+  BriefcaseBusiness,
+  CalendarDays,
+  Users,
+  UserRoundCheck,
+} from "lucide-react";
+
 import WorkspaceLayout from "../../layouts/WorkspaceLayout";
 import { recruiterNavigation } from "../../components/layout/navigation";
+
 import OverviewPage from "./OverviewPage";
 import RequisitionsPage from "../requisitions/RequisitionsPage";
 import CreateRequisitionModal from "../requisitions/components/CreateRequisitionModal";
 import CandidatesPage from "../candidates/CandidatesPage";
 import CandidatePipelinePage from "../candidates/CandidatePipelinePage";
+import ScreeningPage from "../screenings/ScreeningPage";
+import RequisitionDetailPage from "../requisitions/RequisitionDetailPage";
 import {
   createRequisition,
   getCandidates,
   inviteClientContact,
   getRequisitions,
 } from "../../lib/api";
-import ScreeningPage from "../screenings/ScreeningPage";
+
 const pageTitles = {
-  overview: "Dashboard",
-  requisitions: "Requisitions",
-  candidates: "Candidates",
-  pipeline: "Hiring pipeline",
-  screenings: "Screenings",
-  "client-reviews": "Client reviews",
-  settings: "Settings",
-  help: "Help & support",
+  "/overview": "Dashboard",
+  "/requisitions": "Requisitions",
+  "/candidates": "Candidates",
+  "/screenings": "AI Resume Screening",
+  "/pipeline": "Hiring pipeline",
+  "/client-reviews": "Client reviews",
 };
 
 export default function RecruiterDashboard({ user, onSignOut }) {
-  const [currentPage, setCurrentPage] = useState("overview");
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [requisitions, setRequisitions] = useState([]);
   const [candidates, setCandidates] = useState([]);
   const [candidateCount, setCandidateCount] = useState(null);
+
   const [loadingCandidates, setLoadingCandidates] = useState(true);
   const [loadingRequisitions, setLoadingRequisitions] = useState(true);
+
   const [requisitionError, setRequisitionError] = useState("");
   const [candidateToOpen, setCandidateToOpen] = useState(null);
+
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createSaving, setCreateSaving] = useState(false);
   const [createError, setCreateError] = useState("");
-const [createNotice, setCreateNotice] = useState("");
-const [pendingInvitation, setPendingInvitation] = useState(null);
-const [retryingInvitation, setRetryingInvitation] = useState(false);
+  const [createNotice, setCreateNotice] = useState("");
+
+  const [pendingInvitation, setPendingInvitation] = useState(null);
+  const [retryingInvitation, setRetryingInvitation] = useState(false);
+
   async function loadRequisitions() {
     setLoadingRequisitions(true);
     setRequisitionError("");
+
     try {
       const result = await getRequisitions();
       setRequisitions(Array.isArray(result.data) ? result.data : []);
     } catch (error) {
-      setRequisitionError(error instanceof Error ? error.message : "Unable to load requisitions.");
+      setRequisitionError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load requisitions."
+      );
     } finally {
       setLoadingRequisitions(false);
     }
@@ -59,10 +88,13 @@ const [retryingInvitation, setRetryingInvitation] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+
     async function loadCandidateData() {
       setLoadingCandidates(true);
+
       try {
         const result = await getCandidates();
+
         if (!cancelled) {
           const rows = Array.isArray(result.data) ? result.data : [];
           setCandidates(rows);
@@ -71,138 +103,156 @@ const [retryingInvitation, setRetryingInvitation] = useState(false);
       } catch (error) {
         console.error("Failed to load candidates:", error);
       } finally {
-        if (!cancelled) setLoadingCandidates(false);
+        if (!cancelled) {
+          setLoadingCandidates(false);
+        }
       }
     }
+
     loadCandidateData();
-    return () => { cancelled = true; };
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
+  async function handleCreateRequisition(event) {
+    event.preventDefault();
 
-async function handleCreateRequisition(event) {
-  event.preventDefault();
-  setCreateError("");
-  setCreateNotice("");
+    setCreateError("");
+    setCreateNotice("");
 
-  const form = event.currentTarget;
-  const formData = new FormData(form);
+    const form = event.currentTarget;
+    const formData = new FormData(form);
 
-  const payload = {
-    title: String(formData.get("title") || "").trim(),
-    clientOrganizationId: String(
-      formData.get("clientOrganizationId") || "",
-    ).trim(),
-    location: String(formData.get("location") || "").trim(),
-    description: String(formData.get("description") || "").trim(),
-    minExperience: Number(formData.get("minExperience")),
-    maxExperience: Number(formData.get("maxExperience")),
-    noticePeriodDays: Number(formData.get("noticePeriodDays")),
-  };
+    const payload = {
+      title: String(formData.get("title") || "").trim(),
+      clientOrganizationId: String(
+        formData.get("clientOrganizationId") || ""
+      ).trim(),
+      location: String(formData.get("location") || "").trim(),
+      description: String(formData.get("description") || "").trim(),
+      minExperience: Number(formData.get("minExperience")),
+      maxExperience: Number(formData.get("maxExperience")),
+      noticePeriodDays: Number(formData.get("noticePeriodDays")),
+    };
 
-  const invitation = {
-    email: String(formData.get("clientContactEmail") || "")
-      .trim()
-      .toLowerCase(),
-    clientOrganizationId: payload.clientOrganizationId,
-  };
+    const invitation = {
+      email: String(formData.get("clientContactEmail") || "")
+        .trim()
+        .toLowerCase(),
+      clientOrganizationId: payload.clientOrganizationId,
+    };
 
-  if (!payload.clientOrganizationId) {
-    setCreateError("Please select a client organization.");
-    return;
-  }
+    if (!payload.clientOrganizationId) {
+      setCreateError("Please select a client organization.");
+      return;
+    }
 
-  if (!invitation.email) {
-    setCreateError("Please enter the client contact email.");
-    return;
-  }
+    if (!invitation.email) {
+      setCreateError("Please enter the client contact email.");
+      return;
+    }
 
-  if (payload.maxExperience < payload.minExperience) {
-    setCreateError(
-      "Maximum experience must be at least minimum experience.",
-    );
-    return;
-  }
+    if (payload.maxExperience < payload.minExperience) {
+      setCreateError(
+        "Maximum experience must be at least minimum experience."
+      );
+      return;
+    }
 
-  setCreateSaving(true);
+    setCreateSaving(true);
 
-  try {
-    // Step 1: Create the requisition.
-    await createRequisition(payload);
-
-    // Step 2: Close the form and refresh requisitions.
-    form.reset();
-    setCreateModalOpen(false);
-    setCurrentPage("requisitions");
-
-    await loadRequisitions();
-
-    // Step 3: Send the client invitation separately.
     try {
-      await inviteClientContact(invitation);
+      await createRequisition(payload);
+
+      form.reset();
+      setCreateModalOpen(false);
+
+      await loadRequisitions();
+      navigate("/requisitions");
+
+      try {
+        await inviteClientContact(invitation);
+
+        setPendingInvitation(null);
+        setCreateNotice(
+          `Requisition created successfully. Invitation sent to ${invitation.email}.`
+        );
+      } catch (inviteError) {
+        setPendingInvitation(invitation);
+        setCreateNotice(
+          `Requisition created successfully, but the invitation to ${invitation.email} failed: ${
+            inviteError.message || "Unknown email error"
+          }`
+        );
+      }
+    } catch (error) {
+      setCreateError(
+        error instanceof Error
+          ? error.message
+          : "Unable to create requisition."
+      );
+    } finally {
+      setCreateSaving(false);
+    }
+  }
+
+  async function handleRetryInvitation() {
+    if (!pendingInvitation || retryingInvitation) return;
+
+    setRetryingInvitation(true);
+
+    try {
+      await inviteClientContact(pendingInvitation);
+
+      setCreateNotice(
+        `Invitation successfully sent to ${pendingInvitation.email}.`
+      );
 
       setPendingInvitation(null);
+    } catch (error) {
       setCreateNotice(
-        `Requisition created successfully. Invitation sent to ${invitation.email}.`,
+        `Invitation retry failed: ${
+          error.message || "Unable to send email."
+        }`
       );
-    } catch (inviteError) {
-      // The requisition already exists. Save invitation details for retry.
-      setPendingInvitation(invitation);
-      setCreateNotice(
-        `Requisition created successfully, but the invitation to ${invitation.email} failed: ${
-          inviteError.message || "Unknown email error"
-        }`,
-      );
+    } finally {
+      setRetryingInvitation(false);
     }
-  } catch (error) {
-    setCreateError(
-      error instanceof Error
-        ? error.message
-        : "Unable to create requisition.",
-    );
-  } finally {
-    setCreateSaving(false);
   }
-}
-
-
-
-async function handleRetryInvitation() {
-  if (!pendingInvitation || retryingInvitation) return;
-
-  setRetryingInvitation(true);
-
-  try {
-    await inviteClientContact(pendingInvitation);
-
-    setCreateNotice(
-      `Invitation successfully sent to ${pendingInvitation.email}.`,
-    );
-    setPendingInvitation(null);
-  } catch (error) {
-    setCreateNotice(
-      `Invitation retry failed: ${error.message || "Unable to send email."}`,
-    );
-  } finally {
-    setRetryingInvitation(false);
-  }
-}
-
 
   const metrics = [
     {
       label: "Active requisitions",
-      value: loadingRequisitions ? "—" : requisitions.filter((job) => job.status === "open").length,
-      change: loadingRequisitions ? "Loading from database..." : "Live count from MongoDB",
+      value: loadingRequisitions
+        ? "—"
+        : requisitions.filter((job) => job.status === "open").length,
+      change: loadingRequisitions
+        ? "Loading from database..."
+        : "Live count from MongoDB",
       icon: BriefcaseBusiness,
     },
     {
       label: "Candidates reviewed",
       value: loadingCandidates ? "—" : candidateCount ?? "—",
-      change: loadingCandidates ? "Loading from database..." : "Live count from MongoDB",
+      change: loadingCandidates
+        ? "Loading from database..."
+        : "Live count from MongoDB",
       icon: Users,
     },
-    { label: "Client decisions", value: "08", change: "Illustrative sample data", icon: UserRoundCheck },
-    { label: "Interviews scheduled", value: "14", change: "Illustrative sample data", icon: CalendarDays },
+    {
+      label: "Client decisions",
+      value: "08",
+      change: "Illustrative sample data",
+      icon: UserRoundCheck,
+    },
+    {
+      label: "Interviews scheduled",
+      value: "14",
+      change: "Illustrative sample data",
+      icon: CalendarDays,
+    },
   ];
 
   function openCreateModal() {
@@ -210,85 +260,110 @@ async function handleRetryInvitation() {
     setCreateModalOpen(true);
   }
 
-  function renderPage() {
-    if (currentPage === "overview") {
-      return (
-        <OverviewPage
-          user={user}
-          metrics={metrics}
-          requisitions={requisitions}
-          loadingRequisitions={loadingRequisitions}
-          requisitionError={requisitionError}
-          candidates={candidates}
-          onCreateRequisition={openCreateModal}
-          onOpenRequisitions={() => setCurrentPage("requisitions")}
-          onOpenCandidates={() => setCurrentPage("candidates")}
-          onOpenPipeline={() => setCurrentPage("pipeline")}
-          onRetryRequisitions={loadRequisitions}
-        />
-      );
-    }
-    if (currentPage === "requisitions") {
- return (
-    <RequisitionsPage
-      onCreateRequisition={openCreateModal}
-      createNotice={createNotice}
-      pendingInvitation={pendingInvitation}
-      retryingInvitation={retryingInvitation}
-      onRetryInvitation={handleRetryInvitation}
-    />
-  );    }
-    if (currentPage === "candidates") {
-      return (
-        <CandidatesPage
-          candidateToOpen={candidateToOpen}
-          onCandidateOpened={() => setCandidateToOpen(null)}
-        />
-      );
-    }
-    if (currentPage === "pipeline") {
-      return (
-        <CandidatePipelinePage
-          onOpenCandidate={(candidateId) => {
-            setCandidateToOpen(candidateId);
-            setCurrentPage("candidates");
-          }}
-        />
-      );
-    }
-    if (currentPage === "screenings") {
-  return <ScreeningPage />;
-}
-    return (
-      <main className="mx-auto max-w-5xl p-5 md:p-9">
-        <div className="rounded-xl border border-stone-200 bg-white p-8">
-          <p className="text-xs font-semibold uppercase tracking-widest text-[#55734b]">TalentLens workspace</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight">{pageTitles[currentPage] || "Workspace"}</h2>
-          <p className="mt-3 max-w-xl text-sm leading-6 text-stone-500">
-            This section is not connected yet. We will implement it after the core recruiter and client workflows.
-          </p>
-          <button type="button" onClick={() => setCurrentPage("overview")} className="mt-6 rounded-lg bg-[#17251b] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#2b4030]">
-            Back to overview
-          </button>
-        </div>
-      </main>
-    );
-  }
+  const currentPath = location.pathname.replace(/\/$/, "") || "/overview";
+
+  const pageTitle =
+    currentPath.startsWith("/requisitions/")
+      ? "Requisition details"
+      : pageTitles[currentPath] || "TalentLens workspace";
 
   return (
     <WorkspaceLayout
       navigation={recruiterNavigation}
-      currentPage={currentPage}
-      onNavigate={setCurrentPage}
       user={user}
       roleLabel="Recruiter"
       onSignOut={onSignOut}
-      pageTitle={pageTitles[currentPage] || "Workspace"}
+      pageTitle={pageTitle}
       requisitionCount={requisitions.length}
       loadingRequisitions={loadingRequisitions}
-      onActivity={() => setCurrentPage("pipeline")}
+      onActivity={() => navigate("/pipeline")}
     >
-      {renderPage()}
+      <Routes>
+        <Route
+          path="/"
+          element={<Navigate to="/overview" replace />}
+        />
+
+        <Route
+          path="/overview"
+          element={
+            <OverviewPage
+              user={user}
+              metrics={metrics}
+              requisitions={requisitions}
+              loadingRequisitions={loadingRequisitions}
+              requisitionError={requisitionError}
+              candidates={candidates}
+              onCreateRequisition={openCreateModal}
+              onOpenRequisitions={() => navigate("/requisitions")}
+              onOpenCandidates={() => navigate("/candidates")}
+              onOpenPipeline={() => navigate("/pipeline")}
+              onRetryRequisitions={loadRequisitions}
+            />
+          }
+        />
+
+        <Route
+          path="/requisitions"
+          element={
+            <RequisitionsPage
+              onCreateRequisition={openCreateModal}
+              createNotice={createNotice}
+              pendingInvitation={pendingInvitation}
+              retryingInvitation={retryingInvitation}
+              onRetryInvitation={handleRetryInvitation}
+            />
+          }
+        />
+
+<Route
+  path="/requisitions/:requisitionId"
+  element={<RequisitionDetailPage />}
+/>
+
+        <Route
+          path="/candidates"
+          element={
+            <CandidatesPage
+              candidateToOpen={candidateToOpen}
+              onCandidateOpened={() => setCandidateToOpen(null)}
+            />
+          }
+        />
+
+        <Route
+          path="/pipeline"
+          element={
+            <CandidatePipelinePage
+              onOpenCandidate={(candidateId) => {
+                setCandidateToOpen(candidateId);
+                navigate("/candidates");
+              }}
+            />
+          }
+        />
+
+        <Route
+          path="/screenings"
+          element={<ScreeningPage />}
+        />
+
+        <Route
+          path="/client-reviews"
+          element={
+            <WorkspacePlaceholder
+              title="Client reviews"
+              onBack={() => navigate("/overview")}
+            />
+          }
+        />
+
+        <Route
+          path="*"
+          element={<Navigate to="/overview" replace />}
+        />
+      </Routes>
+
       <CreateRequisitionModal
         open={createModalOpen}
         saving={createSaving}
@@ -297,5 +372,46 @@ async function handleRetryInvitation() {
         onSubmit={handleCreateRequisition}
       />
     </WorkspaceLayout>
+  );
+}
+
+function RequisitionRoutePlaceholder() {
+  const { requisitionId } = useParams();
+
+  return (
+    <WorkspacePlaceholder
+      title="Requisition details"
+      description={`Requisition ID: ${requisitionId}. The full detail page will be connected next.`}
+    />
+  );
+}
+
+function WorkspacePlaceholder({ title, description, onBack }) {
+  const navigate = useNavigate();
+
+  return (
+    <main className="mx-auto max-w-5xl p-5 md:p-9">
+      <div className="rounded-xl border border-stone-200 bg-white p-8">
+        <p className="text-xs font-semibold uppercase tracking-widest text-[#55734b]">
+          TalentLens workspace
+        </p>
+
+        <h2 className="mt-3 text-2xl font-semibold tracking-tight">
+          {title}
+        </h2>
+
+        <p className="mt-3 max-w-xl text-sm leading-6 text-stone-500">
+          {description || "This section will be connected in a later step."}
+        </p>
+
+        <button
+          type="button"
+          onClick={onBack || (() => navigate("/overview"))}
+          className="mt-6 rounded-lg bg-[#17251b] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#2b4030]"
+        >
+          Back to overview
+        </button>
+      </div>
+    </main>
   );
 }

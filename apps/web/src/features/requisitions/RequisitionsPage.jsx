@@ -8,7 +8,7 @@ import {
   Plus,
   RefreshCw,
 } from "lucide-react";
-
+import { Link } from "react-router-dom";
 export default function RequisitionsPage({
   onCreateRequisition,
   createNotice,
@@ -222,9 +222,12 @@ export default function RequisitionsPage({
                   {filteredRequisitions.map((job) => (
                     <tr key={job._id} className="hover:bg-stone-50/70">
                       <td className="px-5 py-4">
-                        <div className="font-medium text-stone-900">
-                          {job.title}
-                        </div>
+                        <Link
+  to={`/requisitions/${job._id}`}
+  className="font-medium text-stone-900 hover:text-[#55734b] hover:underline"
+>
+  {job.title}
+</Link>
                         <div className="mt-1 text-sm text-stone-500">
                           {job.clientName}
                         </div>
