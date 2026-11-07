@@ -6,7 +6,7 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock3,
-  Download,
+  ExternalLink,
   FileText,
   Mail,
   Phone,
@@ -353,43 +353,56 @@ async function loadProfile() {
                 )}
               </section>
 
-              <section className="rounded-2xl border border-stone-200 bg-white p-5">
-                <div className="flex items-center gap-2">
-                  <FileText size={18} className="text-stone-500" />
-                  <h3 className="font-semibold text-[#17251b]">
-                    Resume
-                  </h3>
-                </div>
+            
+<section className="rounded-2xl border border-stone-200 bg-white p-5">
+  <div className="flex items-center gap-2">
+    <FileText size={18} className="text-stone-500" />
+    <h3 className="font-semibold text-[#17251b]">Resume</h3>
+  </div>
 
-                <div className="mt-4 flex items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-stone-100 text-stone-600">
-                    <FileText size={19} />
-                  </div>
+  <div className="mt-4 flex items-center gap-3">
+    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-stone-100 text-stone-600">
+      <FileText size={20} />
+    </div>
 
-                  <div className="min-w-0 flex-1">
-                    <p className="break-words text-sm font-medium text-stone-800">
-                      {resume?.originalName || "Resume information unavailable"}
-                    </p>
-                    <p className="mt-1 text-xs text-stone-500">
-                      {resume?.originalName
-                        ? "Uploaded resume"
-                        : "No resume filename found"}
-                    </p>
-                  </div>
+    <div className="min-w-0 flex-1">
+      {resumeUrl ? (
+        <a
+          href={resumeUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="break-words text-sm font-medium text-[#35543b] underline decoration-[#35543b]/40 underline-offset-4 transition hover:text-[#29432f]"
+          title="View resume"
+        >
+          {resume?.originalName || "View uploaded resume"}
+        </a>
+      ) : (
+        <p className="break-words text-sm font-medium text-stone-800">
+          {resume?.originalName || "Resume information unavailable"}
+        </p>
+      )}
 
-                  {resumeUrl && (
-                    <a
-                      href={resumeUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-stone-200 px-3 py-2 text-xs font-medium text-[#35543b] hover:bg-stone-50"
-                    >
-                      <Download size={14} />
-                      Open
-                    </a>
-                  )}
-                </div>
-              </section>
+      <p className="mt-1 text-xs text-stone-500">
+        {resumeUrl
+          ? "Click to view uploaded resume"
+          : "Resume file URL unavailable"}
+      </p>
+    </div>
+
+    {resumeUrl && (
+      <a
+        href={resumeUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[#35543b] px-3 py-2 text-xs font-medium text-white transition hover:bg-[#29432f]"
+      >
+        <ExternalLink size={14} />
+        View
+      </a>
+    )}
+  </div>
+</section>
+
 
               {candidate.experience && (
                 <section className="rounded-2xl border border-stone-200 bg-white p-5">
