@@ -156,7 +156,7 @@ export default function OverviewPage({
               </div>
             </section>
 
-            <section className="mt-8 grid grid-cols-1 gap-6 xl:grid-cols-[1.6fr_1fr]">
+            {/* <section className="mt-8 grid grid-cols-1 gap-6 xl:grid-cols-[1.6fr_1fr]">
               <div className="overflow-hidden rounded-xl border border-stone-200 bg-white">
                 <div className="flex items-center justify-between border-b border-stone-100 px-5 py-5">
                   <div>
@@ -326,7 +326,7 @@ export default function OverviewPage({
                   Activity entries above are illustrative sample data.
                 </p>
               </div>
-            </section>
+            </section> */}
 
             <footer className="mt-8 flex flex-col justify-between gap-2 border-t border-stone-200 py-5 text-xs text-stone-400 sm:flex-row">
               <p>TalentLens AI · Recruitment intelligence workspace</p>

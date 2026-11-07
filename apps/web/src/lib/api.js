@@ -309,3 +309,12 @@ export async function acceptClientInvitation({ token, fullName, password }) {
 
   return result;
 }
+
+
+export async function getRequisitionSubmissions(requisitionId) {
+  const result = await apiRequest(
+    `/submissions/requisition/${requisitionId}`,
+  );
+
+  return result.data || [];
+}

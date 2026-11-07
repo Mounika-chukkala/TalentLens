@@ -8,7 +8,7 @@ import {
   useNavigate,
   useParams,
 } from "react-router-dom";
-
+import ClientReviewsPage from "./ClientReviewsPage";
 import {
   BriefcaseBusiness,
   CalendarDays,
@@ -348,15 +348,12 @@ export default function RecruiterDashboard({ user, onSignOut }) {
           element={<ScreeningPage />}
         />
 
-        <Route
-          path="/client-reviews"
-          element={
-            <WorkspacePlaceholder
-              title="Client reviews"
-              onBack={() => navigate("/overview")}
-            />
-          }
-        />
+       
+          <Route
+  path="/client-reviews"
+  element={<ClientReviewsPage />}
+/>
+         
 
         <Route
           path="*"

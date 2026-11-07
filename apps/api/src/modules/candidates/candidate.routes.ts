@@ -248,3 +248,4 @@ candidateRouter.patch("/:id/stage", requireAuth,requireRecruiter, async (req, re
     });
   }
 });
+

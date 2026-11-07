@@ -1130,12 +1130,10 @@ screeningRouter.get(
 
       // Fetch completed screenings from every batch under this requisition.
       // Sort BEFORE deduplication so the best resume version is retained.
-      const screenings = await Screening.find({
-        requisitionId: requisition._id,
-        status: "completed",
-        overallScore: { $ne: null },
-      })
-        .populate({
+    const screenings = await Screening.find({
+  requisitionId: requisition._id,
+  status: "completed",
+}).populate({
           path: "resumeSubmissionId",
           select:
             "fullName email phone normalizedEmail normalizedPhone skills totalExperience parsingStatus identityStatus identityGroup candidateId resume.originalName resume.mimeType resume.sizeBytes screeningJobId",
