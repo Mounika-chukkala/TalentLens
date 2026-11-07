@@ -57,6 +57,19 @@ export async function createRequisition(requisition) {
   return result.data;
 }
 
+
+export async function updateRequisitionStatus(requisitionId, status) {
+  const result = await apiRequest(
+    `/requisitions/${requisitionId}/status`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    },
+  );
+
+  return result.data;
+}
+
 export async function getCandidates() {
   return apiRequest("/candidates");
 }
@@ -276,6 +289,62 @@ export async function getScreeningResumeBlob(submissionId) {
   return response.blob();
 }
 
+export async function getCandidateResumeBlob(candidateId) {
+  const token = getAccessToken();
+
+  const response = await fetch(
+    `${API_BASE_URL}/candidates/${candidateId}/resume`,
+    {
+      headers: token
+        ? { Authorization: `Bearer ${token}` }
+        : {},
+    },
+  );
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      clearAccessToken();
+    }
+
+    const result = await response.json().catch(() => ({}));
+
+    throw new Error(
+      result.error || "Unable to open candidate resume.",
+    );
+  }
+
+  return response.blob();
+}
+
+export async function getClientCandidateResumeBlob(
+  submissionId,
+  candidateFeedbackId,
+) {
+  const token = getAccessToken();
+
+  const response = await fetch(
+    `${API_BASE_URL}/submissions/${submissionId}/candidates/${candidateFeedbackId}/resume`,
+    {
+      headers: token
+        ? { Authorization: `Bearer ${token}` }
+        : {},
+    },
+  );
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      clearAccessToken();
+    }
+
+    const result = await response.json().catch(() => ({}));
+
+    throw new Error(
+      result.error || "Unable to open candidate resume.",
+    );
+  }
+
+  return response.blob();
+}
 export async function getClientSubmissions() {
   const result = await apiRequest("/submissions/client");
   return result.data || [];

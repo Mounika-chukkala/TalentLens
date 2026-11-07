@@ -14,11 +14,11 @@ export default function CreateRequisitionModal({
   const [organizations, setOrganizations] = useState([]);
   const [selectedOrganizationId, setSelectedOrganizationId] = useState("");
   const [loadingOrganizations, setLoadingOrganizations] = useState(false);
-  const [organizationName, setOrganizationName] = useState("");
-  const [addingOrganization, setAddingOrganization] = useState(false);
-  const [organizationError, setOrganizationError] = useState("");
-  const [showAddOrganization, setShowAddOrganization] = useState(false);
-
+const [organizationName, setOrganizationName] = useState("");
+const [organizationEmail, setOrganizationEmail] = useState("");
+const [addingOrganization, setAddingOrganization] = useState(false);
+const [organizationError, setOrganizationError] = useState("");
+const [showAddOrganization, setShowAddOrganization] = useState(false);
   useEffect(() => {
     if (!open) return;
 
@@ -55,6 +55,15 @@ export default function CreateRequisitionModal({
     };
   }, [open]);
 
+
+  useEffect(() => {
+  if (!open) {
+    setOrganizationEmail("");
+    setOrganizationName("");
+    setShowAddOrganization(false);
+    setOrganizationError("");
+  }
+}, [open]);
   async function handleAddOrganization() {
     const name = organizationName.trim();
 
@@ -81,9 +90,9 @@ export default function CreateRequisitionModal({
         return alreadyExists ? current : [...current, organization];
       });
 
-      setSelectedOrganizationId(organization._id);
-      setOrganizationName("");
-      setShowAddOrganization(false);
+setSelectedOrganizationId(organization._id);
+setOrganizationName("");
+setShowAddOrganization(false);
     } catch (err) {
       setOrganizationError(
         err instanceof Error
@@ -153,95 +162,129 @@ export default function CreateRequisitionModal({
               />
             </label>
 
-            <div className="text-sm font-medium">
-              <label htmlFor="clientOrganizationId">
-                Client organization *
-              </label>
+       <div className="text-sm font-medium">
+  <label htmlFor="clientOrganizationId">
+    Client organization *
+  </label>
 
-              <select
-                id="clientOrganizationId"
-                name="clientOrganizationId"
-                required
-                value={selectedOrganizationId}
-                onChange={(event) =>
-                  setSelectedOrganizationId(event.target.value)
-                }
-                disabled={loadingOrganizations}
-                className="mt-2 w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5 font-normal outline-none focus:border-[#55734b] focus:ring-2 focus:ring-[#55734b]/15 disabled:bg-stone-50"
-              >
-                <option value="">
-                  {loadingOrganizations
-                    ? "Loading organizations..."
-                    : "Select an organization"}
-                </option>
-
-                {organizations.map((organization) => (
-                  <option key={organization._id} value={organization._id}>
-                    {organization.name}
-                  </option>
-                ))}
-              </select>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShowAddOrganization((current) => !current);
-                  setOrganizationError("");
-                }}
-                className="mt-2 text-xs font-semibold text-[#55734b] hover:underline"
-              >
-                {showAddOrganization
-                  ? "− Cancel adding organization"
-                  : "+ Add a new organization"}
-              </button>
-
-              {showAddOrganization && (
-                <div className="mt-3 rounded-lg border border-stone-200 bg-stone-50 p-3">
-                  <label
-                    htmlFor="newOrganizationName"
-                    className="text-xs font-semibold text-stone-700"
-                  >
-                    New organization name
-                  </label>
-
-                  <input
-                    id="newOrganizationName"
-                    value={organizationName}
-                    onChange={(event) =>
-                      setOrganizationName(event.target.value)
-                    }
-                    maxLength={160}
-                    placeholder="e.g. Bright Technologies"
-                    className="mt-2 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-[#55734b]"
-                  />
-
-                  <button
-                    type="button"
-                    onClick={handleAddOrganization}
-                    disabled={addingOrganization || !organizationName.trim()}
-                    className="mt-2 w-full rounded-lg bg-[#17251b] px-3 py-2 text-xs font-semibold text-white hover:bg-[#2b4030] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {addingOrganization ? "Adding..." : "Add organization"}
-                  </button>
-                </div>
-              )}
-            </div>
-
-<label className="text-sm font-medium">
-  Client contact email *
-  <input
-    name="clientContactEmail"
-    type="email"
+  <select
+    id="clientOrganizationId"
+    name="clientOrganizationId"
     required
-    maxLength={254}
-    placeholder="e.g. hiring@company.com"
-    autoComplete="email"
-    className="mt-2 w-full rounded-lg border border-stone-200 px-3 py-2.5 font-normal outline-none focus:border-[#55734b] focus:ring-2 focus:ring-[#55734b]/15"
-  />
-  <span className="mt-1 block text-xs font-normal text-stone-500">
-    An invitation to access the client portal will be sent to this address.
-  </span>
-</label>
+    value={selectedOrganizationId}
+    onChange={(event) =>
+      setSelectedOrganizationId(event.target.value)
+    }
+    disabled={loadingOrganizations}
+    className="mt-2 w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5 font-normal outline-none focus:border-[#55734b] focus:ring-2 focus:ring-[#55734b]/15 disabled:bg-stone-50"
+  >
+    <option value="">
+      {loadingOrganizations
+        ? "Loading organizations..."
+        : "Select an organization"}
+    </option>
+
+    {organizations.map((organization) => (
+      <option key={organization._id} value={organization._id}>
+        {organization.name}
+      </option>
+    ))}
+  </select>
+
+  <div className="relative mt-2">
+  <button
+    type="button"
+    onClick={() => {
+      setShowAddOrganization((current) => !current);
+      setOrganizationError("");
+    }}
+    className="text-xs font-semibold text-[#55734b] hover:underline"
+  >
+    {showAddOrganization
+      ? "− Close"
+      : "+ Add a new organization"}
+  </button>
+
+  {showAddOrganization && (
+    <>
+      <button
+        type="button"
+        aria-label="Close organization dialog"
+        className="fixed inset-0 z-30 cursor-default"
+        onClick={() => setShowAddOrganization(false)}
+      />
+
+      <div className="absolute left-0 top-8 z-40 w-[min(360px,calc(100vw-48px))] rounded-xl border border-stone-200 bg-white p-4 shadow-xl">
+        <div className="mb-3 flex items-start justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-stone-900">
+              Add new organization
+            </h3>
+            <p className="mt-1 text-xs text-stone-500">
+              Enter the organization and optional client contact.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowAddOrganization(false)}
+            className="rounded-md px-2 py-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+          >
+            ✕
+          </button>
+        </div>
+
+        <label className="block text-xs font-semibold text-stone-700">
+          Organization name *
+          <input
+            value={organizationName}
+            onChange={(event) =>
+              setOrganizationName(event.target.value)
+            }
+            maxLength={160}
+            placeholder="e.g. Bright Technologies"
+            className="mt-2 w-full rounded-lg border border-stone-200 px-3 py-2.5 text-sm font-normal outline-none focus:border-[#55734b]"
+          />
+        </label>
+
+        <label className="mt-3 block text-xs font-semibold text-stone-700">
+          Client contact email
+          <input
+            type="email"
+            value={organizationEmail}
+            onChange={(event) =>
+              setOrganizationEmail(event.target.value)
+            }
+            maxLength={254}
+            placeholder="hiring@company.com"
+            className="mt-2 w-full rounded-lg border border-stone-200 px-3 py-2.5 text-sm font-normal outline-none focus:border-[#55734b]"
+          />
+          <span className="mt-1 block font-normal text-stone-500">
+            Optional. An invitation is sent only when provided.
+          </span>
+        </label>
+
+        {organizationError && (
+          <p role="alert" className="mt-3 text-xs text-red-700">
+            {organizationError}
+          </p>
+        )}
+
+        <button
+          type="button"
+          onClick={handleAddOrganization}
+          disabled={addingOrganization || !organizationName.trim()}
+          className="mt-4 w-full rounded-lg bg-[#17251b] px-3 py-2.5 text-xs font-semibold text-white hover:bg-[#2b4030] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {addingOrganization ? "Adding..." : "Add organization"}
+        </button>
+      </div>
+    </>
+  )}
+</div>
+</div>
+
+
 
             <label className="text-sm font-medium">
               Location *
@@ -310,6 +353,12 @@ export default function CreateRequisitionModal({
               />
             </label>
           </div>
+{/* Keep the optional organization email outside the two-column grid. */}
+<input
+  type="hidden"
+  name="clientContactEmail"
+  value={organizationEmail}
+/>
 
           {organizationError && (
             <div
@@ -352,6 +401,8 @@ export default function CreateRequisitionModal({
               {saving ? "Creating..." : "Create requisition"}
             </button>
           </div>
+
+
         </form>
       </section>
     </div>

@@ -1,4 +1,6 @@
 import { Router } from "express";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { z } from "zod";
 import mongoose from "mongoose";
 import { Candidate } from "./candidate.model.js";
@@ -14,7 +16,11 @@ import {
 } from "../../middleware/auth.middleware.js";
 
 export const candidateSubmissionRouter = Router();
-
+const resumeStorageDirectory = path.resolve(
+  process.cwd(),
+  "storage",
+  "resumes",
+);
 const objectIdSchema = z.string().refine(mongoose.isValidObjectId, {
   message: "Invalid ID",
 });
@@ -773,7 +779,126 @@ candidateSubmissionRouter.get(
     }
   },
 );
+// Client can view only resumes belonging to candidates
+// actually submitted to their own organization.
+candidateSubmissionRouter.get(
+  "/:submissionId/candidates/:candidateFeedbackId/resume",
+  requireAuth,
+  requireClient,
+  async (req, res) => {
+    try {
+      const { submissionId, candidateFeedbackId } = req.params;
 
+      if (
+        !mongoose.isValidObjectId(submissionId) ||
+        !mongoose.isValidObjectId(candidateFeedbackId)
+      ) {
+        res.status(400).json({
+          error: "Invalid submission or candidate ID.",
+        });
+        return;
+      }
+
+      const submission = await CandidateSubmission.findOne({
+        _id: submissionId,
+        clientOrganizationId: req.authUser!.clientOrganizationId,
+      }).lean();
+
+      if (!submission) {
+        res.status(404).json({
+          error: "Submission not found.",
+        });
+        return;
+      }
+
+      const submittedCandidate = submission.candidates.find(
+        (item) => item._id.toString() === candidateFeedbackId,
+      );
+
+      if (!submittedCandidate) {
+        res.status(404).json({
+          error: "Submitted candidate not found.",
+        });
+        return;
+      }
+
+      const resumeSubmission = await ResumeSubmission.findById(
+        submittedCandidate.resumeSubmissionId,
+      )
+        .select("resume")
+        .lean();
+if (!resumeSubmission) {
+  res.status(404).json({
+    error: "RESUME_NOT_FOUND",
+    message: "Original resume file not found.",
+  });
+  return;
+}
+      const storageKey = resumeSubmission?.resume?.storageKey;
+
+      if (
+        typeof storageKey !== "string" ||
+        !/^[a-f\d-]{36}\.(pdf|docx)$/i.test(storageKey)
+      ) {
+        res.status(404).json({
+          error: "Resume file not found.",
+        });
+        return;
+      }
+
+      const filePath = path.resolve(
+        resumeStorageDirectory,
+        storageKey,
+      );
+
+      if (
+        !filePath.startsWith(
+          resumeStorageDirectory + path.sep,
+        )
+      ) {
+        res.status(400).json({
+          error: "Invalid resume file path.",
+        });
+        return;
+      }
+
+      const buffer = await readFile(filePath);
+      const isPdf = storageKey.toLowerCase().endsWith(".pdf");
+
+      res.setHeader(
+        "Content-Type",
+        isPdf
+          ? "application/pdf"
+          : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      );
+
+      res.setHeader(
+        "Content-Disposition",
+        `${isPdf ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(
+          resumeSubmission.resume?.originalName || "resume",
+        )}`,
+      );
+
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Cache-Control", "private, no-store");
+
+      res.status(200).send(buffer);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        res.status(404).json({
+          error: "Resume file not found.",
+        });
+        return;
+      }
+
+      console.error("Failed to retrieve client candidate resume:", error);
+
+      res.status(500).json({
+        error: "Unable to retrieve resume.",
+      });
+    }
+  },
+);
 /**
  * Client submits feedback for one candidate within a submission round.
  */

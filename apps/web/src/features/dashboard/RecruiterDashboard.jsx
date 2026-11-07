@@ -31,8 +31,8 @@ import {
   getCandidates,
   inviteClientContact,
   getRequisitions,
+  getRequisitionSubmissions,
 } from "../../lib/api";
-
 const pageTitles = {
   "/overview": "Dashboard",
   "/requisitions": "Requisitions",
@@ -49,7 +49,12 @@ export default function RecruiterDashboard({ user, onSignOut }) {
   const [requisitions, setRequisitions] = useState([]);
   const [candidates, setCandidates] = useState([]);
   const [candidateCount, setCandidateCount] = useState(null);
+const [dashboardStats, setDashboardStats] = useState({
+  clientDecisions: 0,
+  interviewsScheduled: 0,
+});
 
+const [loadingDashboardStats, setLoadingDashboardStats] = useState(true);
   const [loadingCandidates, setLoadingCandidates] = useState(true);
   const [loadingRequisitions, setLoadingRequisitions] = useState(true);
 
@@ -82,9 +87,73 @@ export default function RecruiterDashboard({ user, onSignOut }) {
     }
   }
 
+  async function loadDashboardStats() {
+  try {
+    setLoadingDashboardStats(true);
+
+    if (requisitions.length === 0) {
+      setDashboardStats({
+        clientDecisions: 0,
+        interviewsScheduled: 0,
+      });
+      return;
+    }
+
+    const submissionResults = await Promise.all(
+      requisitions.map((requisition) =>
+        getRequisitionSubmissions(String(requisition._id))
+      )
+    );
+
+    const allCandidates = submissionResults.flatMap((submissions) =>
+      (Array.isArray(submissions) ? submissions : []).flatMap(
+        (submission) => submission.candidates || []
+      )
+    );
+
+    const clientDecisions = allCandidates.filter(
+      (candidate) => candidate.feedback != null
+    ).length;
+
+    const interviewsScheduled = allCandidates.filter(
+      (candidate) => candidate.feedback === "interview"
+    ).length;
+
+    setDashboardStats({
+      clientDecisions,
+      interviewsScheduled,
+    });
+  } catch (error) {
+    console.error("Failed to load dashboard statistics:", error);
+  } finally {
+    setLoadingDashboardStats(false);
+  }
+}
+
+
   useEffect(() => {
     loadRequisitions();
   }, []);
+
+
+  useEffect(() => {
+  let cancelled = false;
+
+  async function refreshStats() {
+    if (cancelled) return;
+    await loadDashboardStats();
+  }
+
+  refreshStats();
+
+  const intervalId = setInterval(refreshStats, 30000);
+
+  return () => {
+    cancelled = true;
+    clearInterval(intervalId);
+  };
+}, [requisitions]);
+
 
   useEffect(() => {
     let cancelled = false;
@@ -149,11 +218,7 @@ export default function RecruiterDashboard({ user, onSignOut }) {
       return;
     }
 
-    if (!invitation.email) {
-      setCreateError("Please enter the client contact email.");
-      return;
-    }
-
+   
     if (payload.maxExperience < payload.minExperience) {
       setCreateError(
         "Maximum experience must be at least minimum experience."
@@ -163,31 +228,41 @@ export default function RecruiterDashboard({ user, onSignOut }) {
 
     setCreateSaving(true);
 
-    try {
-      await createRequisition(payload);
+  try {
+  await createRequisition(payload);
 
-      form.reset();
-      setCreateModalOpen(false);
+  form.reset();
+  setCreateModalOpen(false);
 
-      await loadRequisitions();
-      navigate("/requisitions");
+  await loadRequisitions();
+  navigate("/requisitions");
 
-      try {
-        await inviteClientContact(invitation);
+  // No email means no invitation attempt.
+  if (!invitation.email) {
+    setPendingInvitation(null);
+    setCreateNotice(
+      "Requisition created successfully."
+    );
+    return;
+  }
 
-        setPendingInvitation(null);
-        setCreateNotice(
-          `Requisition created successfully. Invitation sent to ${invitation.email}.`
-        );
-      } catch (inviteError) {
-        setPendingInvitation(invitation);
-        setCreateNotice(
-          `Requisition created successfully, but the invitation to ${invitation.email} failed: ${
-            inviteError.message || "Unknown email error"
-          }`
-        );
-      }
-    } catch (error) {
+  // Send an invitation only when the recruiter provided an email.
+  try {
+    await inviteClientContact(invitation);
+
+    setPendingInvitation(null);
+    setCreateNotice(
+      `Requisition created successfully. Invitation sent to ${invitation.email}.`
+    );
+  } catch (inviteError) {
+    setPendingInvitation(invitation);
+    setCreateNotice(
+      `Requisition created successfully, but the invitation to ${invitation.email} failed: ${
+        inviteError.message || "Unknown email error"
+      }`
+    );
+  }
+} catch (error) {
       setCreateError(
         error instanceof Error
           ? error.message
@@ -242,17 +317,25 @@ export default function RecruiterDashboard({ user, onSignOut }) {
       icon: Users,
     },
     {
-      label: "Client decisions",
-      value: "08",
-      change: "Illustrative sample data",
-      icon: UserRoundCheck,
-    },
-    {
-      label: "Interviews scheduled",
-      value: "14",
-      change: "Illustrative sample data",
-      icon: CalendarDays,
-    },
+  label: "Client decisions",
+  value: loadingDashboardStats
+    ? "—"
+    : dashboardStats.clientDecisions,
+  change: loadingDashboardStats
+    ? "Loading from database..."
+    : "Live count of submitted client feedback",
+  icon: UserRoundCheck,
+},
+{
+  label: "Interviews scheduled",
+  value: loadingDashboardStats
+    ? "—"
+    : dashboardStats.interviewsScheduled,
+  change: loadingDashboardStats
+    ? "Loading from database..."
+    : "Candidates marked for interview by clients",
+  icon: CalendarDays,
+},
   ];
 
   function openCreateModal() {

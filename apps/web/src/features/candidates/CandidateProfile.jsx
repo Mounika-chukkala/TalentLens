@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import {
   getCandidateById,
-  updateCandidateStage,
+  updateCandidateStage,getCandidateResumeBlob 
 } from "../../lib/api";
 const STAGES = [
   { value: "new", label: "New" },
@@ -58,6 +58,7 @@ export default function CandidateProfile({ candidateId, onClose }) {
   const [candidate, setCandidate] = useState(null);
   const [loading, setLoading] = useState(true);
   const [updatingStage, setUpdatingStage] = useState(false);
+const [openingResume, setOpeningResume] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -151,9 +152,49 @@ async function loadProfile() {
     : [];
 
   const resume = candidate?.resume;
-  const resumeUrl =
-    resume?.url || resume?.fileUrl || resume?.downloadUrl;
 
+async function handleViewResume() {
+  if (!candidate?._id || openingResume) return;
+
+  // Open a tab immediately to avoid browser popup blocking.
+  const previewTab = window.open("", "_blank");
+
+  setOpeningResume(true);
+  setError("");
+
+  let objectUrl = null;
+
+  try {
+    const blob = await getCandidateResumeBlob(candidate._id);
+
+    objectUrl = URL.createObjectURL(blob);
+
+    if (previewTab) {
+      previewTab.location.href = objectUrl;
+    } else {
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = resume?.originalName || "resume";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+
+    window.setTimeout(() => {
+      URL.revokeObjectURL(objectUrl);
+    }, 60000);
+  } catch (err) {
+    if (previewTab) previewTab.close();
+
+    setError(
+      err instanceof Error
+        ? err.message
+        : "Unable to open resume.",
+    );
+  } finally {
+    setOpeningResume(false);
+  }
+}
   return (
     <div
       className="fixed inset-0 z-50 flex justify-end bg-black/40"
@@ -366,40 +407,24 @@ async function loadProfile() {
     </div>
 
     <div className="min-w-0 flex-1">
-      {resumeUrl ? (
-        <a
-          href={resumeUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="break-words text-sm font-medium text-[#35543b] underline decoration-[#35543b]/40 underline-offset-4 transition hover:text-[#29432f]"
-          title="View resume"
-        >
-          {resume?.originalName || "View uploaded resume"}
-        </a>
-      ) : (
-        <p className="break-words text-sm font-medium text-stone-800">
-          {resume?.originalName || "Resume information unavailable"}
-        </p>
-      )}
+      <p className="break-words text-sm font-medium text-stone-800">
+        {resume?.originalName || "Resume"}
+      </p>
 
       <p className="mt-1 text-xs text-stone-500">
-        {resumeUrl
-          ? "Click to view uploaded resume"
-          : "Resume file URL unavailable"}
+        Original uploaded resume
       </p>
     </div>
 
-    {resumeUrl && (
-      <a
-        href={resumeUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[#35543b] px-3 py-2 text-xs font-medium text-white transition hover:bg-[#29432f]"
-      >
-        <ExternalLink size={14} />
-        View
-      </a>
-    )}
+    <button
+      type="button"
+      onClick={handleViewResume}
+      disabled={openingResume || !resume?.storageKey}
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[#35543b] px-3 py-2 text-xs font-medium text-white transition hover:bg-[#29432f] disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      <ExternalLink size={14} />
+      {openingResume ? "Opening..." : "View"}
+    </button>
   </div>
 </section>
 

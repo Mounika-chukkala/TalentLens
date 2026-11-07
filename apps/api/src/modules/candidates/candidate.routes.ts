@@ -2,7 +2,7 @@
 import { Router } from "express";
 import multer from "multer";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, writeFile, unlink } from "node:fs/promises";
+import { mkdir, writeFile, unlink,readFile } from "node:fs/promises";
 import path from "node:path";
 import { PDFParse } from "pdf-parse";
 import mammoth from "mammoth";
@@ -149,7 +149,97 @@ sizeBytes: file.size,
     res.status(500).json({ error: "Resume upload failed. Please try again." });
   }
 });
+// View or download the original resume for a candidate.
+candidateRouter.get(
+  "/:id/resume",
+  requireAuth,
+  requireRecruiter,
+  async (req, res) => {
+    try {
+    const id = req.params.id;
 
+if (
+  typeof id !== "string" ||
+  !/^[a-f\d]{24}$/i.test(id)
+) {
+  res.status(400).json({ error: "Invalid candidate ID" });
+  return;
+}
+
+      const candidate = await Candidate.findById(id)
+        .select("requisitionId resume")
+        .lean();
+
+      if (!candidate) {
+        res.status(404).json({ error: "Candidate not found." });
+        return;
+      }
+
+      // Verify that this recruiter owns the candidate's requisition.
+      const { Requisition } = await import("../requisitions/requisition.model.js");
+
+      const ownsRequisition = await Requisition.exists({
+        _id: candidate.requisitionId,
+        createdBy: req.authUser!.id,
+      });
+
+      if (!ownsRequisition) {
+        res.status(404).json({ error: "Resume not found." });
+        return;
+      }
+
+      const storageKey = candidate.resume?.storageKey;
+
+      if (
+        typeof storageKey !== "string" ||
+        !/^[a-f\d-]{36}\.(pdf|docx)$/i.test(storageKey)
+      ) {
+        res.status(404).json({ error: "Resume file not found." });
+        return;
+      }
+
+      const filePath = path.resolve(storageDirectory, storageKey);
+
+      if (!filePath.startsWith(storageDirectory + path.sep)) {
+        res.status(400).json({ error: "Invalid resume file path." });
+        return;
+      }
+
+      const buffer = await readFile(filePath);
+      const isPdf = storageKey.toLowerCase().endsWith(".pdf");
+
+      res.setHeader(
+        "Content-Type",
+        isPdf
+          ? "application/pdf"
+          : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      );
+
+      res.setHeader(
+        "Content-Disposition",
+        `${isPdf ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(
+          candidate.resume?.originalName || "resume",
+        )}`,
+      );
+
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Cache-Control", "private, no-store");
+
+      res.status(200).send(buffer);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        res.status(404).json({ error: "Resume file not found." });
+        return;
+      }
+
+      console.error("Failed to retrieve candidate resume:", error);
+
+      res.status(500).json({
+        error: "Unable to retrieve resume.",
+      });
+    }
+  },
+);
 
 candidateRouter.get("/", requireAuth,requireRecruiter, async (_req, res) => {
   try {
@@ -167,6 +257,7 @@ candidateRouter.get("/", requireAuth,requireRecruiter, async (_req, res) => {
     res.status(500).json({ error: "Failed to retrieve candidates." });
   }
 });
+
 
 candidateRouter.get("/:id",requireAuth,requireRecruiter, async (req, res) => {
   try {

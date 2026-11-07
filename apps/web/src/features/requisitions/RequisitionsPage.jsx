@@ -1,6 +1,6 @@
 
 import { useEffect, useMemo, useState } from "react";
-import { getRequisitions } from "../../lib/api";
+import { getRequisitions,updateRequisitionStatus } from "../../lib/api";
 import {
   Search,
   BriefcaseBusiness,
@@ -21,7 +21,8 @@ export default function RequisitionsPage({
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-
+const [updatingStatusId, setUpdatingStatusId] = useState(null);
+const [statusUpdateError, setStatusUpdateError] = useState("");
   async function loadRequisitions() {
     setLoading(true);
     setError("");
@@ -40,6 +41,33 @@ export default function RequisitionsPage({
     }
   }
 
+  async function handleStatusChange(requisitionId, status) {
+  setUpdatingStatusId(requisitionId);
+  setStatusUpdateError("");
+
+  try {
+    const updated = await updateRequisitionStatus(
+      requisitionId,
+      status,
+    );
+
+    setRequisitions((current) =>
+      current.map((job) =>
+        job._id === requisitionId
+          ? { ...job, status: updated.status }
+          : job
+      )
+    );
+  } catch (error) {
+    setStatusUpdateError(
+      error instanceof Error
+        ? error.message
+        : "Unable to update requisition status."
+    );
+  } finally {
+    setUpdatingStatusId(null);
+  }
+}
   useEffect(() => {
     loadRequisitions();
   }, []);
@@ -64,11 +92,25 @@ export default function RequisitionsPage({
   const openCount = requisitions.filter(
     (job) => job.status === "open",
   ).length;
+  const onHoldCount = requisitions.filter(
+  (job) => job.status === "on_hold",
+).length;
+
+const closedCount = requisitions.filter(
+  (job) => job.status === "closed",
+).length;
 
   return (
     <main className="min-w-0 flex-1 bg-[#f7f8f5] px-5 py-8 sm:px-8">
       <div className="mx-auto max-w-7xl">
-
+  {statusUpdateError && (
+  <div
+    role="alert"
+    className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+  >
+    {statusUpdateError}
+  </div>
+)}
       
 {createNotice && (
   <div
@@ -113,24 +155,33 @@ export default function RequisitionsPage({
           </button>
         </div>
 
-        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="rounded-xl border border-stone-200 bg-white p-5">
-            <p className="text-sm text-stone-500">Total requisitions</p>
-            <p className="mt-3 text-3xl font-semibold">{requisitions.length}</p>
-          </div>
+    <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+  <div className="rounded-xl border border-stone-200 bg-white p-5">
+    <p className="text-sm text-stone-500">Total requisitions</p>
+    <p className="mt-3 text-3xl font-semibold">{requisitions.length}</p>
+  </div>
 
-          <div className="rounded-xl border border-stone-200 bg-white p-5">
-            <p className="text-sm text-stone-500">Open roles</p>
-            <p className="mt-3 text-3xl font-semibold">{openCount}</p>
-          </div>
+  <div className="rounded-xl border border-green-200 bg-white p-5">
+    <p className="text-sm text-stone-500">Open roles</p>
+    <p className="mt-3 text-3xl font-semibold text-green-700">
+      {openCount}
+    </p>
+  </div>
 
-          <div className="rounded-xl border border-stone-200 bg-white p-5">
-            <p className="text-sm text-stone-500">Other statuses</p>
-            <p className="mt-3 text-3xl font-semibold">
-              {requisitions.length - openCount}
-            </p>
-          </div>
-        </div>
+  <div className="rounded-xl border border-amber-200 bg-white p-5">
+    <p className="text-sm text-stone-500">On hold</p>
+    <p className="mt-3 text-3xl font-semibold text-amber-700">
+      {onHoldCount}
+    </p>
+  </div>
+
+  <div className="rounded-xl border border-stone-200 bg-white p-5">
+    <p className="text-sm text-stone-500">Closed roles</p>
+    <p className="mt-3 text-3xl font-semibold text-stone-700">
+      {closedCount}
+    </p>
+  </div>
+</div>
 
         <section className="mt-6 overflow-hidden rounded-xl border border-stone-200 bg-white">
           <div className="flex flex-col gap-3 border-b border-stone-100 p-5 sm:flex-row sm:items-center">
@@ -148,16 +199,17 @@ export default function RequisitionsPage({
               />
             </div>
 
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              aria-label="Filter requisitions by status"
-              className="rounded-lg border border-stone-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#55734b]"
-            >
-              <option value="all">All statuses</option>
-              <option value="open">Open</option>
-              <option value="closed">Closed</option>
-            </select>
+          <select
+  value={statusFilter}
+  onChange={(event) => setStatusFilter(event.target.value)}
+  aria-label="Filter requisitions by status"
+  className="rounded-lg border border-stone-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#55734b]"
+>
+  <option value="all">All statuses</option>
+  <option value="open">Open</option>
+  <option value="on_hold">On hold</option>
+  <option value="closed">Closed</option>
+</select>
 
             <button
               type="button"
@@ -245,11 +297,33 @@ export default function RequisitionsPage({
                         {job.noticePeriodDays} days
                       </td>
 
-                      <td className="px-5 py-4">
-                        <span className="inline-flex rounded-full bg-[#edf3e8] px-3 py-1 text-xs font-medium capitalize text-[#35543b]">
-                          {job.status.replace("_", " ")}
-                        </span>
-                      </td>
+                   <td className="px-5 py-4">
+  <select
+    value={job.status}
+    disabled={updatingStatusId === job._id}
+    onChange={(event) =>
+      handleStatusChange(job._id, event.target.value)
+    }
+    aria-label={`Change status for ${job.title}`}
+    className={`rounded-lg border px-3 py-2 text-xs font-semibold capitalize outline-none disabled:opacity-50 ${
+      job.status === "open"
+        ? "border-green-200 bg-green-50 text-green-800"
+        : job.status === "on_hold"
+          ? "border-amber-200 bg-amber-50 text-amber-800"
+          : "border-stone-200 bg-stone-100 text-stone-700"
+    }`}
+  >
+    <option value="open">Open</option>
+    <option value="on_hold">On hold</option>
+    <option value="closed">Closed</option>
+  </select>
+
+  {updatingStatusId === job._id && (
+    <span className="ml-2 text-xs text-stone-400">
+      Saving...
+    </span>
+  )}
+</td>
 
                       <td className="px-5 py-4 text-sm text-stone-500">
                         {new Date(job.createdAt).toLocaleDateString(

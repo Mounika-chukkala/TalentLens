@@ -44,6 +44,11 @@ const STAGES = [
     label: "Hired",
     description: "Successfully hired",
   },
+  {
+  id: "rejected",
+  label: "Rejected",
+  description: "Candidates rejected during the hiring process",
+},
 ];
 
 const PAGE_SIZE = 5;

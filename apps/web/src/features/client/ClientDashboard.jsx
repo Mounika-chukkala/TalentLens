@@ -14,8 +14,8 @@ import {
   getRequisitions,
   getRequisitionById,
   updateClientCandidateFeedback,
+  getClientCandidateResumeBlob,
 } from "../../lib/api";
-
 import WorkspaceLayout from "../../layouts/WorkspaceLayout";
 import { clientNavigation } from "../../components/layout/navigation";
 import ClientRequisitions from "./ClientRequisitions";
@@ -72,6 +72,49 @@ function FeedbackBadge({ value }) {
 }
 
 function CandidateCard({ candidate, submissionId, onFeedback, saving }) {
+    const [openingResume, setOpeningResume] = useState(false);
+
+  async function handleViewResume() {
+    if (openingResume) return;
+
+    const previewTab = window.open("", "_blank");
+
+    setOpeningResume(true);
+
+    let objectUrl = null;
+
+    try {
+      const blob = await getClientCandidateResumeBlob(
+        submissionId,
+        candidate._id,
+      );
+
+      objectUrl = URL.createObjectURL(blob);
+
+      if (previewTab) {
+        previewTab.location.href = objectUrl;
+      } else {
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.download =
+          candidate.candidateSnapshot?.resumeFileName || "resume";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+
+      window.setTimeout(() => {
+        URL.revokeObjectURL(objectUrl);
+      }, 60000);
+    } catch (error) {
+      if (previewTab) previewTab.close();
+
+      console.error("Unable to open candidate resume:", error);
+      window.alert(error.message || "Unable to open resume.");
+    } finally {
+      setOpeningResume(false);
+    }
+  }
   const snapshot = candidate.candidateSnapshot || {};
   const [feedbackNote, setFeedbackNote] = useState(
     candidate.feedbackNote || "",
@@ -99,11 +142,24 @@ function CandidateCard({ candidate, submissionId, onFeedback, saving }) {
             {snapshot.email || "Email not available"}
           </p>
 
-          {snapshot.resumeFileName && (
-            <p className="mt-1 text-xs text-stone-400">
-              Resume: {snapshot.resumeFileName}
-            </p>
-          )}
+        {snapshot.resumeFileName && (
+  <div className="mt-2 flex flex-wrap items-center gap-3">
+    <p className="text-xs text-stone-400">
+      Resume: {snapshot.resumeFileName}
+    </p>
+
+    <button
+      type="button"
+      onClick={handleViewResume}
+      disabled={openingResume}
+      className="inline-flex items-center gap-1.5 rounded-md bg-[#35543b] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[#29432f] disabled:opacity-60"
+    >
+      <span>
+        {openingResume ? "Opening..." : "View Resume"}
+      </span>
+    </button>
+  </div>
+)}
         </div>
 
         <div className="flex gap-5 sm:text-right">

@@ -110,6 +110,77 @@ const id = String(req.params.id);
   }
 });
 
+
+// UPDATE requisition status
+requisitionRouter.patch(
+  "/:id/status",
+  requireAuth,
+  requireRecruiter,
+  async (req, res) => {
+    try {
+      const id = String(req.params.id);
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        res.status(400).json({
+          error: "VALIDATION_ERROR",
+          message: "Invalid requisition ID.",
+        });
+        return;
+      }
+
+      const statusSchema = z.object({
+        status: z.enum(["open", "on_hold", "closed"]),
+      });
+
+      const parsed = statusSchema.safeParse(req.body);
+
+      if (!parsed.success) {
+        res.status(400).json({
+          error: "VALIDATION_ERROR",
+          message: "Status must be open, on_hold, or closed.",
+        });
+        return;
+      }
+
+      const requisition = await Requisition.findOneAndUpdate(
+        {
+          _id: id,
+          createdBy: new mongoose.Types.ObjectId(req.authUser!.id),
+        },
+        {
+          $set: {
+            status: parsed.data.status,
+          },
+        },
+        {
+          new: true,
+          runValidators: true,
+        },
+      );
+
+      if (!requisition) {
+        res.status(404).json({
+          error: "REQUISITION_NOT_FOUND",
+          message: "Requisition not found.",
+        });
+        return;
+      }
+
+      res.status(200).json({
+        message: "Requisition status updated successfully.",
+        data: requisition,
+      });
+    } catch (error) {
+      console.error("Failed to update requisition status:", error);
+
+      res.status(500).json({
+        error: "INTERNAL_SERVER_ERROR",
+        message: "Could not update requisition status.",
+      });
+    }
+  },
+);
+
 // CREATE requisition
 requisitionRouter.post(
   "/",

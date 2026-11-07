@@ -13,9 +13,7 @@ import {
 } from "lucide-react";
 import {
   getCandidates,
-  updateCandidateStage,
-  uploadResume,
-} from "../../lib/api";
+  } from "../../lib/api";
 import CandidateProfile from "./CandidateProfile";
 const statusStyles = {
   completed: "bg-emerald-50 text-emerald-700",
@@ -52,12 +50,10 @@ function formatDate(date) {
 }
 
 export default function CandidatesPage({ candidateToOpen, onCandidateOpened }) {
-  const fileInputRef = useRef(null);
 
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [error, setError] = useState("");
@@ -112,48 +108,7 @@ useEffect(() => {
 
   onCandidateOpened?.();
 }, [candidateToOpen, loading, candidates]);
-  async function handleFileChange(event) {
-    const file = event.target.files?.[0];
-
-    // Allow the same file to be selected again after an error.
-    event.target.value = "";
-
-    if (!file) return;
-
-    const extension = file.name.split(".").pop()?.toLowerCase();
-
-    if (!["pdf", "docx"].includes(extension)) {
-      setError("Choose a PDF or DOCX resume.");
-      setNotice("");
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      setError("The resume must be 5 MB or smaller.");
-      setNotice("");
-      return;
-    }
-
-    setUploading(true);
-    setError("");
-    setNotice("");
-
-    try {
-      const result = await uploadResume(file);
-
-      setNotice(
-        `${result.fullName || "Candidate"} uploaded successfully. Parsing status: ${formatStatus(result.parsingStatus)}.`,
-      );
-
-      await loadCandidates();
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Resume upload failed.",
-      );
-    } finally {
-      setUploading(false);
-    }
-  }
+ 
 
   const filteredCandidates = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -200,9 +155,8 @@ useEffect(() => {
             </h2>
 
             <p className="mt-2 max-w-xl text-sm leading-6 text-stone-500">
-              Upload resumes, review extracted candidate details, and track
-              parsing quality before moving candidates through your hiring
-              process.
+              Review candidate profiles, inspect extracted details, and
+track parsing quality across your hiring pipeline.
             </p>
           </div>
 
@@ -210,32 +164,15 @@ useEffect(() => {
             <button
               type="button"
               onClick={() => loadCandidates(true)}
-              disabled={loading || refreshing || uploading}
+              disabled={loading || refreshing}
               className="inline-flex items-center justify-center gap-2 rounded-lg border border-stone-200 bg-white px-4 py-3 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
             >
               <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
               Refresh
             </button>
 
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#17251b] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2b4030] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Upload size={16} />
-              {uploading ? "Uploading..." : "Upload resume"}
-            </button>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              onChange={handleFileChange}
-              disabled={uploading}
-              className="hidden"
-              aria-label="Choose a PDF or DOCX resume"
-            />
+      
+           
           </div>
         </div>
 
@@ -364,20 +301,10 @@ useEffect(() => {
               </p>
               <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-stone-500">
                 {candidates.length === 0
-                  ? "Upload a PDF or DOCX resume to create your first candidate record."
-                  : "Try a different search term or parsing-status filter."}
+? "Candidate records will appear here when resumes are processed through AI Resume Screening."                  : "Try a different search term or parsing-status filter."}
               </p>
 
-              {candidates.length === 0 && (
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  className="mt-5 rounded-lg bg-[#17251b] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#2b4030] disabled:opacity-60"
-                >
-                  Upload your first resume
-                </button>
-              )}
+        
             </div>
           ) : (
             <>
