@@ -26,6 +26,7 @@ import {
 generateScorecard,
 saveScorecard,
   getScreeningResults,
+  cancelScreeningJob,
 } from "../../lib/api";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -74,6 +75,28 @@ const [screeningStarted, setScreeningStarted] = useState(false);
 
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+useEffect(() => {
+  if (!notice) return;
+
+  const timeout = setTimeout(() => {
+    setNotice("");
+  }, 7000);
+
+  return () => clearTimeout(timeout);
+}, [notice]);
+
+useEffect(() => {
+  if (!error) return;
+
+  const timeout = setTimeout(() => {
+    setError("");
+  }, 7000);
+
+  return () => clearTimeout(timeout);
+}, [error]);
+
+
 
   useEffect(() => {
     async function loadRequisitions() {
@@ -190,10 +213,14 @@ useEffect(() => {
 
       // Restore the active batch.
       setJob(restoredJob);
-const hasStarted =  ["queued", "processing", "completed", "partially_failed", "failed"].includes(
+      setUploadCompleted(Boolean(restoredJob.uploadComplete));
+setBatchName(restoredJob.name || "");
+setTopN(restoredJob.topN || 10);
+const hasStarted =
+  Boolean(restoredJob.startedAt) ||
+  ["processing", "completed", "partially_failed", "failed"].includes(
     restoredJob.status
-  )
-// Boolean(restoredJob.startedAt);
+  );// Boolean(restoredJob.startedAt);
 
 setScreeningStarted(hasStarted);
       // Restore the upload summary where the job response provides counts.
@@ -290,6 +317,42 @@ const hasScreeningStarted =
     event.target.value = "";
   }
 
+
+const [cancelling, setCancelling] = useState(false);
+
+async function handleNewScreeningBatch() {
+  if (cancelling || creatingJob || uploading || starting) return;
+
+  const activeStatuses = [
+    "uploading",
+    "queued",
+    "processing",
+    "cancelling",
+  ];
+
+  try {
+    setError("");
+    setNotice("");
+
+    if (job?._id && activeStatuses.includes(job.status)) {
+      setCancelling(true);
+
+      await cancelScreeningJob(job._id);
+
+      setNotice("Previous screening batch cancellation requested.");
+    }
+
+    resetBatch();
+
+    if (!job?._id || !activeStatuses.includes(job.status)) {
+      setNotice("Ready to create a new screening batch.");
+    }
+  } catch (err) {
+    setError(err.message || "Unable to create a new screening batch.");
+  } finally {
+    setCancelling(false);
+  }
+}
   function removeFile(index) {
     setFiles((previous) => previous.filter((_, i) => i !== index));
   }
@@ -526,17 +589,24 @@ setUploadCompleted(false);
 
       setJob({ ...createdJob, _id: jobId });
       setCreatingJob(false);
-      setUploading(true);
+setUploading(true);
 
-      const uploadResponse = await uploadScreeningResumes(jobId, files);
-      const uploadData = getPayload(uploadResponse);
+const uploadResponse = await uploadScreeningResumes(jobId, files);
+const uploadData = getPayload(uploadResponse);
 
-      setUploadSummary(uploadData);
-setUploadCompleted(true);
+// Refresh the job so the UI has the latest cumulative counts.
+const jobResponse = await getScreeningJob(jobId);
+const jobPayload = getPayload(jobResponse);
+const refreshedJob = jobPayload?.job ?? jobPayload;
 
-      await completeScreeningUpload(jobId);
+setJob(refreshedJob);
+setUploadSummary(uploadData);
+setFiles([]);
+setUploadCompleted(false);
 
-      setNotice("Upload completed. Review the summary before starting AI screening.");
+setNotice(
+  "Resumes uploaded. You can add more before starting AI screening."
+);  
     } catch (err) {
       setError(err.message || "Something went wrong while creating the batch.");
     } finally {
@@ -545,23 +615,79 @@ setUploadCompleted(true);
     }
   }
 
-  async function handleStartScreening() {
-    if (!job?._id) return;
 
-    try {
-      setStarting(true);
-      setError("");
 
-      await startScreening(job._id);
-setScreeningStarted(true);
-      setNotice("AI screening has started. Results will appear as resumes are evaluated.");
-    } catch (err) {
-      setError(err.message || "Unable to start screening.");
-    } finally {
-      setStarting(false);
-    }
+async function handleAddMoreResumes() {
+  if (!job?._id || files.length === 0) {
+    setError("Select at least one resume.");
+    return;
   }
 
+  if (job.uploadComplete || hasScreeningStarted) {
+    setError("Resumes cannot be added after screening has started.");
+    return;
+  }
+
+  try {
+    setUploading(true);
+    setError("");
+    setNotice("");
+
+    const response = await uploadScreeningResumes(job._id, files);
+    const data = getPayload(response);
+
+    setUploadSummary(data);
+    setFiles([]);
+
+    // Refresh authoritative batch counts from the backend.
+    const refreshedResponse = await getScreeningJob(job._id);
+    const refreshedPayload = getPayload(refreshedResponse);
+    const refreshedJob = refreshedPayload?.job ?? refreshedPayload;
+
+    setJob(refreshedJob);
+    setUploadSummary({ counts: refreshedJob.counts });
+
+    setNotice("Additional resumes uploaded successfully.");
+  } catch (err) {
+    setError(err.message || "Unable to upload additional resumes.");
+  } finally {
+    setUploading(false);
+  }
+}
+
+
+async function handleStartScreening() {
+  if (!job?._id) return;
+
+  try {
+    setStarting(true);
+    setError("");
+    setNotice("");
+
+    // Close the upload phase only when the recruiter starts screening.
+    if (!job.uploadComplete) {
+      await completeScreeningUpload(job._id);
+    }
+
+    await startScreening(job._id);
+
+    const response = await getScreeningJob(job._id);
+    const payload = getPayload(response);
+    const refreshedJob = payload?.job ?? payload;
+
+    setJob(refreshedJob);
+    setUploadCompleted(true);
+    setScreeningStarted(true);
+
+    setNotice(
+      "AI screening has started. Results will appear as resumes are evaluated."
+    );
+  } catch (err) {
+    setError(err.message || "Unable to start screening.");
+  } finally {
+    setStarting(false);
+  }
+}
   function resetBatch() {
     setJob(null);
     setUploadSummary(null);
@@ -622,11 +748,13 @@ const activeStep =
 
         {job && (
           <button
-            onClick={resetBatch}
+onClick={handleNewScreeningBatch}
+disabled={cancelling || creatingJob || uploading || starting}
             className="inline-flex items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 hover:bg-stone-50"
           >
             <Plus size={16} />
-            New screening batch
+            {/* New screening batch */}
+{cancelling ? "Cancelling..." : "New screening batch"}
           </button>
         )}
       </div>
@@ -674,6 +802,15 @@ const activeStep =
           </div>
         ))}
       </div>
+
+<input
+      ref={fileInputRef}
+      type="file"
+      accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      multiple
+      onChange={handleFileSelection}
+      className="hidden"
+    />
 
       {!job ? (
         <>
@@ -1016,14 +1153,7 @@ disabled={scorecardIsSaved || Boolean(scorecard.lockedAt)}
               </p>
             </div>
 
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              multiple
-              onChange={handleFileSelection}
-              className="hidden"
-            />
+            
 
             <button
               type="button"
@@ -1140,10 +1270,10 @@ disabled={scorecardIsSaved || Boolean(scorecard.lockedAt)}
   onClick={handleStartScreening}
 disabled={
   starting ||
-  uploading ||
-  !uploadCompleted ||
-  hasScreeningStarted
-}
+   uploading ||
+  hasScreeningStarted ||
+  (job?.counts?.queued ?? summary.queued ?? 0) <= 0
+  }
   className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#263d2b] px-5 py-3 text-sm font-semibold text-white hover:bg-[#354e39] disabled:cursor-not-allowed disabled:opacity-50"
 >
   {starting ? (
@@ -1157,9 +1287,7 @@ disabled={
     ? "Screening already started"
     : uploading
       ? "Uploading resumes..."
-      : !uploadCompleted
-        ? "Waiting for upload..."
-        : "Start AI screening"}
+      : "Start AI screening"}
 </button>
           </div>
 
@@ -1206,7 +1334,48 @@ disabled={
               );
             })}
           </div>
+{!job.uploadComplete && !hasScreeningStarted && (
+  <div className="mt-6 rounded-xl border border-dashed border-stone-300 bg-[#fafbf8] p-5">
+    <h3 className="text-sm font-semibold text-[#263d2b]">
+      Add more resumes
+    </h3>
 
+    <p className="mt-1 text-xs text-stone-500">
+      You can continue uploading resumes until you start AI screening.
+    </p>
+
+    {/*  */}
+
+    <button
+      type="button"
+      onClick={() => fileInputRef.current?.click()}
+      disabled={uploading || starting}
+      className="mt-4 rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-50"
+    >
+      <span className="inline-flex items-center gap-2">
+        <UploadCloud size={16} />
+        Select resumes
+      </span>
+    </button>
+
+    {files.length > 0 && (
+      <div className="mt-4">
+        <p className="mb-2 text-sm font-medium text-stone-700">
+          Selected: {files.length} resumes
+        </p>
+
+        <button
+          type="button"
+          onClick={handleAddMoreResumes}
+          disabled={uploading || starting}
+          className="rounded-lg bg-[#263d2b] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {uploading ? "Uploading..." : "Upload additional resumes"}
+        </button>
+      </div>
+    )}
+  </div>
+)}
           <div className="mt-6 rounded-xl bg-[#f5f7f0] p-4">
             <div className="flex items-start gap-3">
               <Sparkles size={19} className="mt-0.5 shrink-0 text-[#607b4b]" />

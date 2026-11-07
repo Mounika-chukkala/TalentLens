@@ -387,3 +387,9 @@ export async function getRequisitionSubmissions(requisitionId) {
 
   return result.data || [];
 }
+
+export async function cancelScreeningJob(jobId) {
+  return apiRequest(`/screenings/jobs/${jobId}/cancel`, {
+    method: "POST",
+  });
+}

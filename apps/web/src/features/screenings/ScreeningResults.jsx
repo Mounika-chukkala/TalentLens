@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -372,7 +372,6 @@ function CandidateCard({
 export default function ScreeningResults({ jobId }) {
   const [job, setJob] = useState(null);
   const [results, setResults] = useState([]);
-
   const [cumulativeResults, setCumulativeResults] = useState([]);
   const [cumulativePagination, setCumulativePagination] =
     useState(null);
@@ -437,139 +436,79 @@ function isPreviouslySubmitted(screening) {
   // Fetch screening data and requisition-wide rankings
   // --------------------------------------------------
 
-  useEffect(() => {
-    let stopped = false;
-    let timer;
 
-    async function refresh() {
-      try {
-        const [jobResponse, resultsResponse] = await Promise.all([
-          getScreeningJob(jobId),
-          getScreeningResults(jobId, {
-            page: 1,
-            limit: 100,
-          }),
-        ]);
+useEffect(() => {
+  if (!jobId) return;
+
+  let stopped = false;
+  let timer = null;
+  let requestInProgress = false;
+
+  const POLL_INTERVAL = 10000;
+
+  async function refresh(isInitial = false) {
+    if (stopped || requestInProgress) return;
+
+    requestInProgress = true;
+
+    try {
+      const jobResponse = await getScreeningJob(jobId);
+
+      if (stopped) return;
+
+      const jobData = getPayload(jobResponse);
+
+      setJob(jobData);
+      setError("");
+
+      // Only fetch results when initially loading or
+      // while evaluation is actually running.
+      const isActive =
+        Boolean(jobData.startedAt) &&
+        ["queued", "processing"].includes(jobData.status);
+
+      if (isInitial || isActive) {
+        const resultsResponse = await getScreeningResults(jobId, {
+          page: 1,
+          limit: 100,
+        });
 
         if (stopped) return;
 
-        const jobData = getPayload(jobResponse);
         const resultsData = getPayload(resultsResponse);
-
-        setJob(jobData);
         setResults(resultsData.results || []);
-        setError("");
-
-        // Get requisition ID
-        const requisitionId =
-          jobData.requisitionId?._id ||
-          jobData.requisitionId;
-
-        if (requisitionId) {
-          try {
-            // Fetch submission history
-            setLoadingSubmissionHistory(true);
-
-const historyResponse = await getRequisitionSubmissions(requisitionId);
-
-if (stopped) return;
-
-const historyPayload = getPayload(historyResponse);
-
-const history = Array.isArray(historyPayload)
-  ? historyPayload
-  : Array.isArray(historyPayload?.data)
-    ? historyPayload.data
-    : Array.isArray(historyPayload?.results)
-      ? historyPayload.results
-      : [];
-
-setExistingSubmissions(history);
-
-            // Calculate next available submission round
-            const highestRound = history.reduce(
-              (highest, item) =>
-                Math.max(
-                  highest,
-                  Number(item.round) || 0
-                ),
-              0
-            );
-
-            const nextRound = highestRound + 1;
-
-            setSubmissionRound((current) =>
-              Number(current) <= nextRound
-                ? nextRound
-                : current
-            );
-
-            // Fetch requisition-wide rankings
-            const rankingResponse =
-              await getRequisitionRankedCandidates(
-                requisitionId,
-                {
-                  page: 1,
-                  limit: 50,
-                }
-              );
-
-            if (stopped) return;
-
-            const rankingData = getPayload(rankingResponse);
-
-            setCumulativeResults(
-              rankingData.results || []
-            );
-
-            setCumulativePagination(
-              rankingData.pagination || null
-            );
-          } catch (rankingError) {
-            console.error(
-              "Unable to load requisition-wide rankings:",
-              rankingError
-            );
-          } finally {
-            if (!stopped) {
-              setLoadingSubmissionHistory(false);
-            }
-          }
-        }
-
-        // Poll while screening is active
-        const progress = jobData.progress || {};
-
-        const isActive =
-          (progress.queued || 0) > 0 ||
-          (progress.processing || 0) > 0 ||
-          ["queued", "processing"].includes(jobData.status);
-
-        if (isActive) {
-          timer = setTimeout(refresh, 3000);
-        }
-      } catch (err) {
-        if (!stopped) {
-          setError(
-            err.message || "Unable to load screening results."
-          );
-
-          timer = setTimeout(refresh, 5000);
-        }
-      } finally {
-        if (!stopped) {
-          setLoading(false);
-        }
+        if (isInitial) {
+  setLoading(false);
+}
       }
+
+      // Stop completely for terminal statuses.
+      if (isActive && !stopped) {
+        timer = setTimeout(() => refresh(false), POLL_INTERVAL);
+      }
+    } catch (err) {
+        if (!stopped) {
+    setError(
+      err.message || "Unable to load screening results."
+    );
+
+    setLoading(false);
+  }
+    } finally {
+      requestInProgress = false;
     }
+  }
 
-    refresh();
+  refresh(true);
 
-    return () => {
-      stopped = true;
+  return () => {
+    stopped = true;
+
+    if (timer) {
       clearTimeout(timer);
-    };
-  }, [jobId]);
+    }
+  };
+}, [jobId]);
 
   // --------------------------------------------------
   // Screening statistics

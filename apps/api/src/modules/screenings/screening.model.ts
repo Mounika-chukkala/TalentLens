@@ -69,7 +69,7 @@ const screeningSchema = new Schema(
 
     status: {
       type: String,
-      enum: ["queued", "processing", "completed", "failed"],
+      enum: ["queued", "processing", "completed", "failed","cancelled"],
       default: "queued",
       index: true,
     },

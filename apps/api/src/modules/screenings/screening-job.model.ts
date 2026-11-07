@@ -24,20 +24,22 @@ const screeningJobSchema = new Schema(
       default: 50,
     },
 
-    status: {
-      type: String,
-      enum: [
-        "uploading",
-        "queued",
-        "processing",
-        "completed",
-        "partially_failed",
-        "failed",
-        "cancelled",
-      ],
-      default: "uploading",
-      index: true,
-    },
+   status: {
+  type: String,
+  enum: [
+    "uploading",
+    "queued",
+    "processing",
+    "cancelling",
+    "completed",
+    "partially_failed",
+    "failed",
+    "interrupted",
+    "cancelled",
+  ],
+  default: "uploading",
+  index: true,
+},
 
     counts: {
       total: { type: Number, default: 0, min: 0 },
@@ -48,6 +50,7 @@ const screeningJobSchema = new Schema(
       processing: { type: Number, default: 0, min: 0 },
       completed: { type: Number, default: 0, min: 0 },
       failed: { type: Number, default: 0, min: 0 },
+      cancelled: { type: Number, default: 0, min: 0 },
     },
 
     // Prevent processing before all upload chunks have arrived.
@@ -55,6 +58,11 @@ const screeningJobSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    activeUploads: {
+  type: Number,
+  default: 0,
+  min: 0,
+},
 
     startedAt: {
       type: Date,
@@ -71,6 +79,42 @@ const screeningJobSchema = new Schema(
       default: null,
       maxlength: 1000,
     },
+    cancelRequested: {
+  type: Boolean,
+  default: false,
+  index: true,
+},
+
+cancelRequestedAt: {
+  type: Date,
+  default: null,
+},
+
+interruptionReason: {
+  type: String,
+  enum: [
+    "USER_STARTED_NEW_BATCH",
+    "USER_CANCELLED",
+    "SYSTEM_ERROR",
+  ],
+  default: null,
+},
+
+cleanupStatus: {
+  type: String,
+  enum: ["not_required", "pending", "completed", "failed"],
+  default: "not_required",
+},
+
+cleanupStartedAt: {
+  type: Date,
+  default: null,
+},
+
+cleanupCompletedAt: {
+  type: Date,
+  default: null,
+},
   },
   {
     timestamps: true,

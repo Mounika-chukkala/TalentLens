@@ -5,18 +5,21 @@ import { ResumeSubmission } from "./resume-submission.model.js";
 import { Requisition } from "../requisitions/requisition.model.js";
 import { ScreeningJob } from "./screening-job.model.js";
 import { Screening } from "./screening.model.js";
-
+import mongoose from "mongoose";
 import {
   evaluateResume,
   screeningModelName,
   ScreeningServiceError,
 } from "./screening.service.js";
+import { cleanupCancelledScreeningJob } from "./screening-cleanup.service.js";
 const CONCURRENCY = 1;
 const POLL_INTERVAL_MS = 1500;
 const LOCK_TIMEOUT_MS = 2 * 60 * 1000;
 const HEARTBEAT_INTERVAL_MS = 30 * 1000;
 const RECOVERY_INTERVAL_MS = 30 * 1000;
 const MAX_ATTEMPTS = 3;
+const CLEANUP_RECOVERY_INTERVAL_MS = 30 * 1000;
+const CLEANUP_RECOVERY_BATCH_SIZE = 20;
 
 const instanceId = randomUUID();
 
@@ -25,6 +28,10 @@ const activeSlots = new Set<number>();
 let workerStarted = false;
 let recovering = false;
 let lastRecoveryAt = 0;
+let recoveringCleanups = false;
+let lastCleanupRecoveryAt = 0;
+
+
 
 function getAttemptLimit(maxAttempts: number): number {
   return Math.min(maxAttempts || MAX_ATTEMPTS, MAX_ATTEMPTS);
@@ -42,8 +49,14 @@ function getRetryTime(attempt: number): Date {
 async function refreshJobStatus(jobId: unknown): Promise<void> {
   const job = await ScreeningJob.findById(jobId);
 
-  if (!job || !job.uploadComplete) return;
-
+if (
+  !job ||
+  !job.uploadComplete ||
+  job.cancelRequested ||
+  ["cancelling", "interrupted", "cancelled"].includes(job.status)
+) {
+  return;
+}
   const counts = job.counts;
 
   const queued = counts?.queued ?? 0;
@@ -67,6 +80,44 @@ async function refreshJobStatus(jobId: unknown): Promise<void> {
 
   await job.save();
 }
+async function markScreeningCancelled(
+  screeningId: unknown,
+  jobId: unknown,
+  workerId: string,
+  reason = "Screening cancelled before evaluation could be committed.",
+): Promise<void> {
+  const updated = await Screening.findOneAndUpdate(
+    {
+      _id: screeningId,
+      status: "processing",
+      lockedBy: workerId,
+    },
+    {
+      $set: {
+        status: "cancelled",
+        lockedAt: null,
+        lockedBy: null,
+        lastError: reason,
+      },
+    },
+    { returnDocument: "after" },
+  );
+
+  // Only decrement processing if this worker actually changed the record.
+  if (!updated) return;
+
+  await ScreeningJob.updateOne(
+    { _id: jobId },
+    {
+      $inc: {
+        "counts.processing": -1,
+        "counts.cancelled": 1,
+      },
+    },
+  );
+}
+
+
 
 async function recoverStaleScreenings(): Promise<void> {
   if (recovering) return;
@@ -88,6 +139,49 @@ async function recoverStaleScreenings(): Promise<void> {
       .lean();
 
     for (const screening of staleScreenings) {
+      const parentJob = await ScreeningJob.findById(
+  screening.screeningJobId,
+)
+  .select("status cancelRequested")
+  .lean();
+
+if (
+  !parentJob ||
+  parentJob.cancelRequested ||
+  ["cancelling", "interrupted", "cancelled"].includes(
+    parentJob.status,
+  )
+) {
+  const cancelled = await Screening.findOneAndUpdate(
+    {
+      _id: screening._id,
+      status: "processing",
+      lockedAt: screening.lockedAt,
+    },
+    {
+      $set: {
+        status: "cancelled",
+        lockedAt: null,
+        lockedBy: null,
+        lastError: "Cancelled during stale worker recovery.",
+      },
+    },
+  );
+
+  if (cancelled) {
+    await ScreeningJob.updateOne(
+      { _id: screening.screeningJobId },
+      {
+        $inc: {
+          "counts.processing": -1,
+          "counts.cancelled": 1,
+        },
+      },
+    );
+  }
+
+  continue;
+}
       const attemptLimit = getAttemptLimit(
         screening.maxAttempts,
       );
@@ -154,17 +248,62 @@ async function recoverStaleScreenings(): Promise<void> {
   }
 }
 
+
+async function recoverPendingCleanups(): Promise<void> {
+  if (recoveringCleanups) return;
+
+  recoveringCleanups = true;
+
+  try {
+    const pendingJobs = await ScreeningJob.find({
+      cancelRequested: true,
+      status: {
+        $in: ["cancelling", "interrupted", "cancelled"],
+      },
+      cleanupStatus: {
+        $in: ["pending", "failed"],
+      },
+    })
+      .select("_id")
+      .sort({ updatedAt: 1 })
+      .limit(CLEANUP_RECOVERY_BATCH_SIZE)
+      .lean();
+
+    for (const job of pendingJobs) {
+      try {
+        await cleanupCancelledScreeningJob(
+          String(job._id),
+        );
+      } catch (error) {
+        console.error(
+          `Cleanup recovery failed for screening batch ${job._id}:`,
+          error,
+        );
+      }
+    }
+  } catch (error) {
+    console.error(
+      "Pending screening cleanup recovery failed:",
+      error,
+    );
+  } finally {
+    recoveringCleanups = false;
+  }
+}
+
+
 async function claimNextScreening(workerId: string) {
   const now = new Date();
 
   // Only batches explicitly started by the recruiter are eligible.
-  const activeJobs = await ScreeningJob.find({
-    uploadComplete: true,
-    startedAt: { $ne: null },
-    status: { $in: ["queued", "processing"] },
-  })
-    .select("_id")
-    .lean();
+ const activeJobs = await ScreeningJob.find({
+  uploadComplete: true,
+  startedAt: { $ne: null },
+  cancelRequested: { $ne: true },
+  status: { $in: ["queued", "processing"] },
+})
+  .select("_id")
+  .lean();
 
   if (activeJobs.length === 0) return null;
 
@@ -218,6 +357,8 @@ async function claimNextScreening(workerId: string) {
 
   return screening;
 }
+
+
 
 async function processScreening(
   screening: NonNullable<
@@ -285,6 +426,24 @@ async function processScreening(
       );
     }
 
+    const batchBeforeEvaluation = await ScreeningJob.findOne({
+  _id: jobId,
+  status: "processing",
+  cancelRequested: { $ne: true },
+})
+  .select("_id")
+  .lean();
+
+if (!batchBeforeEvaluation) {
+  await markScreeningCancelled(
+    screeningId,
+    jobId,
+    workerId,
+    "Screening cancelled before evaluation.",
+  );
+
+  return;
+}
   const result = await evaluateResume({
   resumeText: submission.extractedText,
   jobTitle: requisition.title,
@@ -295,7 +454,32 @@ async function processScreening(
   scorecardCriteria: scorecard.criteria,
 });
 
-    const updated = await Screening.findOneAndUpdate(
+ const session = await mongoose.startSession();
+
+try {
+  await session.withTransaction(async () => {
+    // Update batch counters only if the batch is still active.
+    const batchUpdate = await ScreeningJob.updateOne(
+      {
+        _id: jobId,
+        status: "processing",
+        cancelRequested: { $ne: true },
+      },
+      {
+        $inc: {
+          "counts.processing": -1,
+          "counts.completed": 1,
+        },
+      },
+      { session },
+    );
+
+    if (batchUpdate.modifiedCount !== 1) {
+      throw new Error("SCREENING_BATCH_CANCELLED");
+    }
+
+    // Commit the evaluation only if this worker still owns the lease.
+    const screeningUpdate = await Screening.updateOne(
       {
         _id: screeningId,
         status: "processing",
@@ -312,89 +496,108 @@ async function processScreening(
           lastError: null,
         },
       },
-      {
-        returnDocument: "after",
-      },
+      { session },
     );
 
-    // Do not let an expired worker overwrite a newer attempt.
-    if (!updated) return;
+    if (screeningUpdate.modifiedCount !== 1) {
+      throw new Error("SCREENING_WORKER_LEASE_LOST");
+    }
+  });
+} finally {
+  await session.endSession();
+}
 
-    await ScreeningJob.updateOne(
-      { _id: jobId },
-      {
-        $inc: {
-          "counts.processing": -1,
-          "counts.completed": 1,
-        },
-      },
-    );
+console.log(`Screening completed: ${screeningId}`);
 
-    console.log(
-      `Screening completed: ${screeningId}`,
-    );
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message.slice(0, 1000)
-        : "Unknown screening error.";
+  const message =
+    error instanceof Error
+      ? error.message.slice(0, 1000)
+      : "Unknown screening error.";
 
-    const attemptLimit = getAttemptLimit(
-      screening.maxAttempts,
-    );
+  const attemptLimit = getAttemptLimit(
+    screening.maxAttempts,
+  );
 
-   const isRetryable =
-  !(error instanceof ScreeningServiceError) ||
-  error.retryable;
+  const isCancellation =
+    error instanceof Error &&
+    error.message === "SCREENING_BATCH_CANCELLED";
 
-const shouldRetry =
-  isRetryable &&
-  screening.attempts < attemptLimit;
+  // A cancelled batch must not retry this resume.
+ if (isCancellation) {
+  await markScreeningCancelled(
+    screeningId,
+    jobId,
+    workerId,
+  );
 
-    const updated = await Screening.findOneAndUpdate(
-      {
-        _id: screeningId,
-        status: "processing",
-        lockedBy: workerId,
+  return;
+}
+
+  const isRetryable =
+    !(error instanceof ScreeningServiceError) ||
+    error.retryable;
+
+  const shouldRetry =
+    isRetryable &&
+    screening.attempts < attemptLimit;
+
+  const updated = await Screening.findOneAndUpdate(
+    {
+      _id: screeningId,
+      status: "processing",
+      lockedBy: workerId,
+    },
+    {
+      $set: {
+        status: shouldRetry ? "queued" : "failed",
+        nextRunAt: shouldRetry
+          ? getRetryTime(screening.attempts)
+          : screening.nextRunAt,
+        lockedAt: null,
+        lockedBy: null,
+        lastError: message,
       },
-      {
-        $set: {
-          status: shouldRetry ? "queued" : "failed",
-          nextRunAt: shouldRetry
-            ? getRetryTime(screening.attempts)
-            : screening.nextRunAt,
-          lockedAt: null,
-          lockedBy: null,
-          lastError: message,
-        },
-      },
-      {
-        returnDocument: "after",
-      },
-    );
+    },
+    {
+      returnDocument: "after",
+    },
+  );
 
-    if (!updated) return;
+  if (!updated) return;
 
-    await ScreeningJob.updateOne(
-      { _id: jobId },
-      {
-        $inc: shouldRetry
-          ? {
-              "counts.processing": -1,
-              "counts.queued": 1,
-            }
-          : {
-              "counts.processing": -1,
-              "counts.failed": 1,
-            },
-      },
-    );
+  await ScreeningJob.updateOne(
+    { _id: jobId },
+    {
+      $inc: shouldRetry
+        ? {
+            "counts.processing": -1,
+            "counts.queued": 1,
+          }
+        : {
+            "counts.processing": -1,
+            "counts.failed": 1,
+          },
+    },
+  );
 
-    console.error(
-      `Screening ${shouldRetry ? "will retry" : "failed"}: ${screeningId}`,
-      message,
-    );
-  } finally {
+  console.error(
+    `Screening ${shouldRetry ? "will retry" : "failed"}: ${screeningId}`,
+    message,
+  );
+} 
+// finally {
+//   await session.endSession();
+// }
+
+// if (!committed) return;
+
+//     console.error(
+//       `Screening ${shouldRetry ? "will retry" : "failed"}: ${screeningId}`,
+//       message,
+//     );
+//   } 
+  finally {
     clearInterval(heartbeat);
   }
 
@@ -424,6 +627,7 @@ async function runWorkerSlot(slot: number): Promise<void> {
   }
 }
 
+
 export function startScreeningWorker(): void {
   if (workerStarted) return;
 
@@ -433,7 +637,11 @@ export function startScreeningWorker(): void {
     `Screening worker started with concurrency ${CONCURRENCY}.`,
   );
 
+  // Recover pending cleanup jobs immediately on startup.
+  void recoverPendingCleanups();
+
   setInterval(() => {
+    // Recover stale screening workers.
     if (
       Date.now() - lastRecoveryAt >= RECOVERY_INTERVAL_MS
     ) {
@@ -441,6 +649,16 @@ export function startScreeningWorker(): void {
       void recoverStaleScreenings();
     }
 
+    // Retry interrupted batch cleanup independently.
+    if (
+      Date.now() - lastCleanupRecoveryAt >=
+      CLEANUP_RECOVERY_INTERVAL_MS
+    ) {
+      lastCleanupRecoveryAt = Date.now();
+      void recoverPendingCleanups();
+    }
+
+    // Run normal screening workers.
     for (let slot = 0; slot < CONCURRENCY; slot++) {
       void runWorkerSlot(slot);
     }
