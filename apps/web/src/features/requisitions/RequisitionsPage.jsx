@@ -1,6 +1,6 @@
 
-import { useEffect, useMemo, useState } from "react";
-import { getRequisitions,updateRequisitionStatus } from "../../lib/api";
+import {  useMemo, useState } from "react";
+// import { getRequisitions,updateRequisitionStatus } from "../../lib/api";
 import {
   Search,
   BriefcaseBusiness,
@@ -10,54 +10,30 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 export default function RequisitionsPage({
+  requisitions = [],
+  loading,
+  error,
+  onRefresh,
+  onStatusChange,
   onCreateRequisition,
   createNotice,
   pendingInvitation,
   retryingInvitation,
   onRetryInvitation,
-}) {
-    const [requisitions, setRequisitions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+}) {    
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 const [updatingStatusId, setUpdatingStatusId] = useState(null);
 const [statusUpdateError, setStatusUpdateError] = useState("");
-  async function loadRequisitions() {
-    setLoading(true);
-    setError("");
+ 
 
-    try {
-      const result = await getRequisitions();
-      setRequisitions(result.data);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to load requisitions.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
 
-  async function handleStatusChange(requisitionId, status) {
+async function handleStatusChange(requisitionId, status) {
   setUpdatingStatusId(requisitionId);
   setStatusUpdateError("");
 
   try {
-    const updated = await updateRequisitionStatus(
-      requisitionId,
-      status,
-    );
-
-    setRequisitions((current) =>
-      current.map((job) =>
-        job._id === requisitionId
-          ? { ...job, status: updated.status }
-          : job
-      )
-    );
+    await onStatusChange(requisitionId, status);
   } catch (error) {
     setStatusUpdateError(
       error instanceof Error
@@ -68,9 +44,7 @@ const [statusUpdateError, setStatusUpdateError] = useState("");
     setUpdatingStatusId(null);
   }
 }
-  useEffect(() => {
-    loadRequisitions();
-  }, []);
+
 
   const filteredRequisitions = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -213,8 +187,7 @@ const closedCount = requisitions.filter(
 
             <button
               type="button"
-              onClick={loadRequisitions}
-              disabled={loading}
+onClick={onRefresh}              disabled={loading}
               aria-label="Refresh requisitions"
               className="inline-flex items-center justify-center gap-2 rounded-lg border border-stone-200 px-3 py-2.5 text-sm hover:bg-stone-50 disabled:opacity-50"
             >
@@ -234,7 +207,7 @@ const closedCount = requisitions.filter(
               </p>
               <button
                 type="button"
-                onClick={loadRequisitions}
+onClick={onRefresh}
                 className="mt-4 rounded-lg border border-stone-200 px-4 py-2 text-sm hover:bg-stone-50"
               >
                 Try again

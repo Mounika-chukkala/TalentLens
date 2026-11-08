@@ -568,10 +568,12 @@ useEffect(() => {
       setLoading(false);
 
       // 3. Continue polling only while the batch is active.
-      const isActive =
-        Boolean(jobData.startedAt) &&
-        ["queued", "processing"].includes(jobData.status);
-
+     const isActive = [
+  "uploading",
+  "queued",
+  "processing",
+  "cancelling",
+].includes(jobData.status);
       if (isActive && !stopped) {
         timer = setTimeout(
           () => refresh(false),
@@ -582,15 +584,21 @@ useEffect(() => {
       // Terminal batches get one final refresh above,
       // then stop polling.
     } catch (err) {
-      if (!stopped) {
-        setError(
-          err.message || "Unable to load screening results."
-        );
-        setLoading(false);
-      }
-    } finally {
-      requestInProgress = false;
-    }
+  if (!stopped) {
+    setError(
+      err.message || "Unable to load screening results."
+    );
+    setLoading(false);
+
+    // Retry after a temporary request failure.
+    timer = setTimeout(
+      () => refresh(false),
+      POLL_INTERVAL
+    );
+  }
+} finally {
+  requestInProgress = false;
+}
   }
 
   refresh(true);

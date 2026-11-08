@@ -31,6 +31,7 @@ import {
   getCandidates,
   inviteClientContact,
   getRequisitions,
+  updateRequisitionStatus,
   getRequisitionSubmissions,
 } from "../../lib/api";
 const pageTitles = {
@@ -87,6 +88,21 @@ const [loadingDashboardStats, setLoadingDashboardStats] = useState(true);
     }
   }
 
+  async function handleRequisitionStatusChange(requisitionId, status) {
+  const updated = await updateRequisitionStatus(
+    requisitionId,
+    status
+  );
+
+  setRequisitions((current) =>
+    current.map((job) =>
+      job._id === requisitionId
+        ? { ...job, ...updated }
+        : job
+    )
+  );
+}
+
   async function loadDashboardStats() {
   try {
     setLoadingDashboardStats(true);
@@ -136,25 +152,32 @@ const [loadingDashboardStats, setLoadingDashboardStats] = useState(true);
   }, []);
 
 
-  useEffect(() => {
-  let cancelled = false;
+//   useEffect(() => {
+//   let cancelled = false;
 
-  async function refreshStats() {
-    if (cancelled) return;
-    await loadDashboardStats();
+//   async function refreshStats() {
+//     if (cancelled) return;
+//     await loadDashboardStats();
+//   }
+
+//   refreshStats();
+
+//   const intervalId = setInterval(refreshStats, 30000);
+
+//   return () => {
+//     cancelled = true;
+//     clearInterval(intervalId);
+//   };
+// }, [requisitions]);
+
+useEffect(() => {
+  // Dashboard statistics are only needed on the Overview page.
+  if (location.pathname !== "/overview") {
+    return;
   }
 
-  refreshStats();
-
-  const intervalId = setInterval(refreshStats, 30000);
-
-  return () => {
-    cancelled = true;
-    clearInterval(intervalId);
-  };
-}, [requisitions]);
-
-
+  loadDashboardStats();
+}, [requisitions, location.pathname]);
   useEffect(() => {
     let cancelled = false;
 
@@ -386,18 +409,23 @@ const [loadingDashboardStats, setLoadingDashboardStats] = useState(true);
           }
         />
 
-        <Route
-          path="/requisitions"
-          element={
-            <RequisitionsPage
-              onCreateRequisition={openCreateModal}
-              createNotice={createNotice}
-              pendingInvitation={pendingInvitation}
-              retryingInvitation={retryingInvitation}
-              onRetryInvitation={handleRetryInvitation}
-            />
-          }
-        />
+      <Route
+  path="/requisitions"
+  element={
+    <RequisitionsPage
+      requisitions={requisitions}
+      loading={loadingRequisitions}
+      error={requisitionError}
+      onRefresh={loadRequisitions}
+      onStatusChange={handleRequisitionStatusChange}
+      onCreateRequisition={openCreateModal}
+      createNotice={createNotice}
+      pendingInvitation={pendingInvitation}
+      retryingInvitation={retryingInvitation}
+      onRetryInvitation={handleRetryInvitation}
+    />
+  }
+/>
 
 <Route
   path="/requisitions/:requisitionId"

@@ -1,31 +1,28 @@
-const API_BASE_URL = "http://localhost:5000/api";
-const TOKEN_KEY = "talentlens_access_token";
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
+  // const TOKEN_KEY = "talentlens_access_token";
 
 async function apiRequest(path, options = {}) {
-  const token = getAccessToken();
-
   const headers = {
     ...(options.body && !(options.body instanceof FormData)
       ? { "Content-Type": "application/json" }
       : {}),
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...options.headers,
   };
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers,
+    credentials: "include",
   });
 
   const result = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    if (response.status === 401) {
-      clearAccessToken();
-    }
-
     const error = new Error(
-      result.message || result.error || `Request failed (${response.status})`,
+      result.message ||
+        result.error ||
+        `Request failed (${response.status})`,
     );
 
     error.status = response.status;
@@ -34,7 +31,6 @@ async function apiRequest(path, options = {}) {
 
   return result;
 }
-
 export async function getRequisitions() {
   return apiRequest("/requisitions");
 }
@@ -102,36 +98,32 @@ export async function updateCandidateStage(candidateId, stage) {
   return result.data;
 }
 
-export function getAccessToken() {
-  return localStorage.getItem(TOKEN_KEY);
-}
+// export function getAccessToken() {
+//   return localStorage.getItem(TOKEN_KEY);
+// }
 
-export function saveAccessToken(token) {
-  localStorage.setItem(TOKEN_KEY, token);
-}
+// export function saveAccessToken(token) {
+//   localStorage.setItem(TOKEN_KEY, token);
+// }
 
-export function clearAccessToken() {
-  localStorage.removeItem(TOKEN_KEY);
-}
+// export function clearAccessToken() {
+//   localStorage.removeItem(TOKEN_KEY);
+// }
 
 export async function loginUser({ email, password }) {
   const response = await apiRequest("/auth/login", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
     body: JSON.stringify({ email, password }),
   });
 
-  const token = response.token || response.data?.accessToken;
+  const user =
+    response.user ||
+    response.data?.user ||
+    response.data;
 
-  const user = response.user || response.data?.user;
-
-  if (!token || !user) {
+  if (!user) {
     throw new Error("Invalid login response from server.");
   }
-
-  saveAccessToken(token);
 
   return user;
 }
@@ -143,7 +135,13 @@ export async function getCurrentUser() {
 }
 
 export async function logoutUser() {
-  clearAccessToken();
+  try {
+    await apiRequest("/auth/logout", {
+      method: "POST",
+    });
+  } catch (error) {
+    console.error("Logout request failed:", error);
+  }
 }
 
 export async function getClientOrganizations() {
@@ -268,19 +266,19 @@ export async function retryFailedScreenings(jobId) {
 }
 
 export async function getScreeningResumeBlob(submissionId) {
-  const token = getAccessToken();
+  // const token = getAccessToken();
 
   const response = await fetch(
     `${API_BASE_URL}/screenings/submissions/${submissionId}/resume`,
     {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    },
+    credentials: "include",
+  },
   );
 
   if (!response.ok) {
-    if (response.status === 401) {
-      clearAccessToken();
-    }
+    // if (response.status === 401) {
+    //   clearAccessToken();
+    // }
 
     const result = await response.json().catch(() => ({}));
     throw new Error(result.error || "Unable to open resume.");
@@ -290,21 +288,19 @@ export async function getScreeningResumeBlob(submissionId) {
 }
 
 export async function getCandidateResumeBlob(candidateId) {
-  const token = getAccessToken();
+  // const token = getAccessToken();
 
   const response = await fetch(
     `${API_BASE_URL}/candidates/${candidateId}/resume`,
     {
-      headers: token
-        ? { Authorization: `Bearer ${token}` }
-        : {},
-    },
+    credentials: "include",
+  },
   );
 
   if (!response.ok) {
-    if (response.status === 401) {
-      clearAccessToken();
-    }
+    // if (response.status === 401) {
+    //   clearAccessToken();
+    // }
 
     const result = await response.json().catch(() => ({}));
 
@@ -320,21 +316,19 @@ export async function getClientCandidateResumeBlob(
   submissionId,
   candidateFeedbackId,
 ) {
-  const token = getAccessToken();
+  // const token = getAccessToken();
 
   const response = await fetch(
     `${API_BASE_URL}/submissions/${submissionId}/candidates/${candidateFeedbackId}/resume`,
     {
-      headers: token
-        ? { Authorization: `Bearer ${token}` }
-        : {},
-    },
+    credentials: "include",
+  },
   );
 
   if (!response.ok) {
-    if (response.status === 401) {
-      clearAccessToken();
-    }
+    // if (response.status === 401) {
+    //   clearAccessToken();
+    // }
 
     const result = await response.json().catch(() => ({}));
 

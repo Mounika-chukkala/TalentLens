@@ -6,7 +6,6 @@ import {
 } from "react";
 
 import {
-  getAccessToken,
   getCurrentUser,
   loginUser,
   logoutUser,
@@ -21,12 +20,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let active = true;
 
-    async function restoreSession() {
-  if (!getAccessToken()) {
-    if (active) setLoading(false);
-    return;
-  }
-
+ async function restoreSession() {
   try {
     const currentUser = await getCurrentUser();
 
@@ -34,19 +28,13 @@ export function AuthProvider({ children }) {
       setUser(currentUser);
     }
   } catch (error) {
-    console.error("Session restoration failed:", error);
-
-    // Only clear the session when the server explicitly
-    // rejects the token or the account is no longer eligible.
     if (error.status === 401 || error.status === 403) {
-      await logoutUser();
-
       if (active) {
         setUser(null);
       }
     } else {
-      // Keep the token for temporary network/server failures.
-      // Do not silently destroy an otherwise valid session.
+      console.error("Session restoration failed:", error);
+
       if (active) {
         setUser(null);
       }
