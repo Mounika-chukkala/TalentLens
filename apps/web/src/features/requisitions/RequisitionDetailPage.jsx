@@ -11,8 +11,11 @@ import {
   UserRound,
 } from "lucide-react";
 
-import { getRequisitionById, getRequisitionSubmissions } from "../../lib/api";
-
+import {
+  getRequisitionById,
+  getRequisitionSubmissions,
+  updateRequisitionStatus,
+} from "../../lib/api";
 function DetailItem({ icon: Icon, label, value }) {
   return (
     <div className="flex items-start gap-3">
@@ -42,14 +45,58 @@ function formatDate(date) {
 
 export default function RequisitionDetailPage() {
   const { requisitionId } = useParams();
-
+const [updatingStatus, setUpdatingStatus] = useState(false);
+const [statusUpdateError, setStatusUpdateError] = useState("");
+const [statusUpdateSuccess, setStatusUpdateSuccess] = useState("");
   const [requisition, setRequisition] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 const [submissions, setSubmissions] = useState([]);
 const [loadingSubmissions, setLoadingSubmissions] = useState(true);
 const [submissionError, setSubmissionError] = useState("");
-  useEffect(() => {
+
+async function handleStatusChange(event) {
+  const nextStatus = event.target.value;
+
+  if (
+    !requisition ||
+    nextStatus === requisition.status ||
+    updatingStatus
+  ) {
+    return;
+  }
+
+  setUpdatingStatus(true);
+  setStatusUpdateError("");
+  setStatusUpdateSuccess("");
+
+  try {
+    const updatedRequisition = await updateRequisitionStatus(
+      requisition._id,
+      nextStatus,
+    );
+
+    setRequisition(updatedRequisition);
+
+    setStatusUpdateSuccess(
+      `Requisition status changed to ${
+        nextStatus === "on_hold"
+          ? "On hold"
+          : nextStatus.charAt(0).toUpperCase() + nextStatus.slice(1)
+      }.`,
+    );
+  } catch (err) {
+    setStatusUpdateError(
+      err.message || "Unable to update requisition status.",
+    );
+  } finally {
+    setUpdatingStatus(false);
+  }
+}
+
+
+
+useEffect(() => {
     let cancelled = false;
 
     async function loadRequisition() {
@@ -150,7 +197,7 @@ useEffect(() => {
   }
 
   return (
-    <main className="min-w-0 bg-[#f7f8f5] px-5 py-8 sm:px-8">
+    <main className="min-w-0 bg-[#f7f8f5] px-5 py-6 sm:px-8">
       <div className="mx-auto max-w-6xl">
         <Link
           to="/requisitions"
@@ -161,45 +208,87 @@ useEffect(() => {
         </Link>
 
         {/* Header */}
-        <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-6 md:p-8">
-          <div className="flex flex-col justify-between gap-5 md:flex-row md:items-start">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="rounded-full bg-[#edf3e8] px-3 py-1 text-xs font-semibold capitalize text-[#35543b]">
-                  {requisition.status?.replaceAll("_", " ")}
-                </span>
+        <section className="mt-3 rounded-2xl border border-stone-200 bg-white p-6 md:p-8">
+          <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-start">
+  {/* Left side: Requisition details */}
+  <div className="min-w-0">
+    <h1 className="text-3xl font-semibold tracking-tight text-stone-900">
+      {requisition.title}
+    </h1>
 
-                <span className="text-xs text-stone-400">
-                  Created {formatDate(requisition.createdAt)}
-                </span>
-              </div>
+    <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-stone-500">
+      <span className="flex items-center gap-2">
+        <Building2 size={17} />
+        {requisition.company}
+      </span>
 
-              <h1 className="mt-4 text-2xl font-semibold tracking-tight text-[#17251b] md:text-3xl">
-                {requisition.title}
-              </h1>
+      <span className="flex items-center gap-2">
+        <MapPin size={17} />
+        {requisition.location}
+      </span>
+    </div>
+  </div>
 
-              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-stone-500">
-                <span className="inline-flex items-center gap-1.5">
-                  <Building2 size={15} />
-                  {requisition.clientName}
-                </span>
+  {/* Right side: Status and created date */}
+  <div className="flex shrink-0 flex-col items-start gap-3 sm:items-end">
+    <div className="flex items-center gap-3">
+      <label
+        htmlFor="requisition-status"
+        className="text-xs font-medium text-stone-500"
+      >
+        Status
+      </label>
 
-                <span className="inline-flex items-center gap-1.5">
-                  <MapPin size={15} />
-                  {requisition.location}
-                </span>
-              </div>
-            </div>
-          </div>
+      <select
+        id="requisition-status"
+        value={requisition.status || "open"}
+        onChange={handleStatusChange}
+        disabled={updatingStatus}
+        className={`rounded-full border px-4 py-2 text-sm font-semibold capitalize outline-none transition disabled:cursor-wait disabled:opacity-60 ${
+          requisition.status === "open"
+            ? "border-green-200 bg-green-50 text-green-800"
+            : requisition.status === "on_hold"
+              ? "border-amber-200 bg-amber-50 text-amber-800"
+              : "border-stone-200 bg-stone-100 text-stone-700"
+        }`}
+      >
+        <option value="open">Open</option>
+        <option value="on_hold">On hold</option>
+        <option value="closed">Closed</option>
+      </select>
+    </div>
+
+    <p className="text-xs text-stone-400">
+      Created {formatDate(requisition.createdAt)}
+    </p>
+
+    {updatingStatus && (
+      <p className="text-xs text-stone-400">Saving...</p>
+    )}
+  </div>
+</div>
+
+{/* Status update feedback */}
+{statusUpdateError && (
+  <p role="alert" className="mt-4 text-sm text-red-600">
+    {statusUpdateError}
+  </p>
+)}
+
+{statusUpdateSuccess && (
+  <p role="status" className="mt-4 text-sm text-green-700">
+    {statusUpdateSuccess}
+  </p>
+)}
         </section>
 
         {/* Job overview */}
-        <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-6 md:p-8">
+        <section className="mt-2 rounded-2xl border border-stone-200 bg-white p-4 md:p-7">
           <h2 className="text-lg font-semibold text-[#17251b]">
             Job overview
           </h2>
 
-          <div className="mt-7 grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-5 grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
             <DetailItem
               icon={BriefcaseBusiness}
               label="Job title"
@@ -245,12 +334,12 @@ useEffect(() => {
         </section>
 
         {/* Description */}
-        <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-6 md:p-8">
+        <section className="mt-1 rounded-2xl border border-stone-200 bg-white p-4 py-4 md:p-5">
           <h2 className="text-lg font-semibold text-[#17251b]">
             Job description and requirements
           </h2>
 
-          <div className="mt-5 whitespace-pre-wrap break-words text-sm leading-7 text-stone-600">
+          <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-stone-600">
             {requisition.description || "No job description provided."}
           </div>
         </section>
@@ -267,7 +356,7 @@ useEffect(() => {
             next stage.
           </p>
         </section> */}
-        <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-6 md:p-8">
+        <section className="mt-4 rounded-2xl border border-stone-200 bg-white p-6 md:p-8">
   <div className="flex flex-wrap items-center justify-between gap-3">
     <div>
       <h2 className="text-lg font-semibold text-[#17251b]">
@@ -290,7 +379,7 @@ useEffect(() => {
   ) : submissionError ? (
     <p className="mt-6 text-sm text-red-600">{submissionError}</p>
   ) : submissions.length === 0 ? (
-    <div className="mt-6 rounded-xl border border-dashed border-stone-300 bg-[#fafbf8] p-8 text-center">
+    <div className="mt-3 rounded-xl border border-dashed border-stone-300 bg-[#fafbf8] p-8 text-center">
       <p className="font-medium text-stone-700">
         No candidates submitted yet
       </p>
@@ -299,13 +388,13 @@ useEffect(() => {
       </p>
     </div>
   ) : (
-    <div className="mt-6 space-y-5">
+    <div className="mt-3 space-y-5">
       {submissions.map((submission) => (
         <div
           key={submission._id}
           className="overflow-hidden rounded-xl border border-stone-200"
         >
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-[#fafbf8] px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-[#fafbf8] px-5 py-3">
             <div>
               <h3 className="font-semibold text-[#17251b]">
                 Submission Round {submission.round}
