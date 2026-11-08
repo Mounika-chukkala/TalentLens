@@ -332,6 +332,61 @@ async function handleViewResume() {
                 </div>
               </section>
 
+<section className="rounded-2xl border border-stone-200 bg-white p-5">
+  <div className="flex items-center gap-2">
+    <BriefcaseBusiness size={18} className="text-stone-500" />
+    <h3 className="font-semibold text-[#17251b]">
+      Linked Requisition
+    </h3>
+  </div>
+
+  {candidate.requisitionId &&
+  typeof candidate.requisitionId === "object" ? (
+    <div className="mt-5 grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
+      <div className="min-w-0">
+        <p className="text-xs text-stone-500">Requisition name</p>
+        <p className="mt-1 break-words text-sm font-semibold text-stone-800">
+          {candidate.requisitionId.title || "Not available"}
+        </p>
+      </div>
+
+      <div className="min-w-0">
+        <p className="text-xs text-stone-500">Client name</p>
+        <p className="mt-1 break-words text-sm font-semibold text-stone-800">
+          {candidate.requisitionId.clientName || "Not available"}
+        </p>
+      </div>
+
+      <div className="min-w-0">
+        <p className="text-xs text-stone-500">Location</p>
+        <p className="mt-1 break-words text-sm text-stone-800">
+          {candidate.requisitionId.location || "Not specified"}
+        </p>
+      </div>
+
+      <div className="min-w-0">
+        <p className="text-xs text-stone-500">Requisition status</p>
+        <span
+          className={`mt-1 inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ${
+            candidate.requisitionId.status === "open"
+              ? "bg-green-50 text-green-700"
+              : candidate.requisitionId.status === "on_hold"
+                ? "bg-amber-50 text-amber-700"
+                : "bg-stone-100 text-stone-600"
+          }`}
+        >
+          {(candidate.requisitionId.status || "unknown").replace("_", " ")}
+        </span>
+      </div>
+    </div>
+  ) : (
+    <p className="mt-3 text-sm text-stone-500">
+      No linked requisition found.
+    </p>
+  )}
+</section>
+
+
               <section className="rounded-2xl border border-stone-200 bg-white p-5">
                 <div className="flex items-center gap-2">
                   <BriefcaseBusiness size={18} className="text-stone-500" />

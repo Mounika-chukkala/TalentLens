@@ -394,6 +394,61 @@ export default function ScreeningResults({ jobId }) {
   const [loadingSubmissionHistory, setLoadingSubmissionHistory] =
     useState(false);
 
+
+
+    useEffect(() => {
+  const requisitionId =
+    job?.requisitionId?._id || job?.requisitionId;
+
+  if (!requisitionId) return;
+
+  let cancelled = false;
+
+  async function loadRequisitionData() {
+    try {
+      const [rankingResponse, historyResponse] =
+        await Promise.all([
+          getRequisitionRankedCandidates(requisitionId, {
+            page: 1,
+            limit: 50,
+          }),
+          getRequisitionSubmissions(requisitionId),
+        ]);
+
+      if (cancelled) return;
+
+      const rankingData = getPayload(rankingResponse);
+      const history = getHistoryArray(historyResponse);
+
+      setCumulativeResults(rankingData.results || []);
+      setCumulativePagination(
+        rankingData.pagination || null
+      );
+      setExistingSubmissions(history);
+
+      const highestRound = history.reduce(
+        (highest, item) =>
+          Math.max(highest, Number(item.round) || 0),
+        0
+      );
+
+      setSubmissionRound(highestRound + 1);
+    } catch (err) {
+      if (!cancelled) {
+        console.error(
+          "Failed to load requisition-wide rankings:",
+          err
+        );
+      }
+    }
+  }
+
+  loadRequisitionData();
+
+  return () => {
+    cancelled = true;
+  };
+}, [job?.requisitionId]);
   // --------------------------------------------------
   // Previously submitted candidate IDs
   // --------------------------------------------------
@@ -444,7 +499,7 @@ useEffect(() => {
   let timer = null;
   let requestInProgress = false;
 
-  const POLL_INTERVAL = 10000;
+  const POLL_INTERVAL = 5000;
 
   async function refresh(isInitial = false) {
     if (stopped || requestInProgress) return;
@@ -452,48 +507,87 @@ useEffect(() => {
     requestInProgress = true;
 
     try {
+      // 1. Always get the latest batch status.
       const jobResponse = await getScreeningJob(jobId);
 
       if (stopped) return;
 
       const jobData = getPayload(jobResponse);
-
       setJob(jobData);
       setError("");
 
-      // Only fetch results when initially loading or
-      // while evaluation is actually running.
-      const isActive =
-        Boolean(jobData.startedAt) &&
-        ["queued", "processing"].includes(jobData.status);
+      const requisitionId =
+        jobData.requisitionId?._id ||
+        jobData.requisitionId;
 
-      if (isInitial || isActive) {
-        const resultsResponse = await getScreeningResults(jobId, {
-          page: 1,
-          limit: 100,
-        });
+      // 2. Refresh batch results AND global ranking together.
+      if (requisitionId) {
+        const [
+          resultsResponse,
+          rankingResponse,
+          historyResponse,
+        ] = await Promise.all([
+          getScreeningResults(jobId, {
+            page: 1,
+            limit: 100,
+          }),
+          getRequisitionRankedCandidates(requisitionId, {
+            page: 1,
+            limit: 100,
+          }),
+          getRequisitionSubmissions(requisitionId),
+        ]);
 
         if (stopped) return;
 
         const resultsData = getPayload(resultsResponse);
+        const rankingData = getPayload(rankingResponse);
+        const history = getHistoryArray(historyResponse);
+
+        // Update current batch results.
         setResults(resultsData.results || []);
-        if (isInitial) {
-  setLoading(false);
-}
+
+        // Update requisition-wide ranking.
+        setCumulativeResults(rankingData.results || []);
+        setCumulativePagination(
+          rankingData.pagination || null
+        );
+
+        // Update previous client submissions.
+        setExistingSubmissions(history);
+
+        const highestRound = history.reduce(
+          (highest, item) =>
+            Math.max(highest, Number(item.round) || 0),
+          0
+        );
+
+        setSubmissionRound(highestRound + 1);
       }
 
-      // Stop completely for terminal statuses.
+      setLoading(false);
+
+      // 3. Continue polling only while the batch is active.
+      const isActive =
+        Boolean(jobData.startedAt) &&
+        ["queued", "processing"].includes(jobData.status);
+
       if (isActive && !stopped) {
-        timer = setTimeout(() => refresh(false), POLL_INTERVAL);
+        timer = setTimeout(
+          () => refresh(false),
+          POLL_INTERVAL
+        );
       }
-    } catch (err) {
-        if (!stopped) {
-    setError(
-      err.message || "Unable to load screening results."
-    );
 
-    setLoading(false);
-  }
+      // Terminal batches get one final refresh above,
+      // then stop polling.
+    } catch (err) {
+      if (!stopped) {
+        setError(
+          err.message || "Unable to load screening results."
+        );
+        setLoading(false);
+      }
     } finally {
       requestInProgress = false;
     }
@@ -509,6 +603,7 @@ useEffect(() => {
     }
   };
 }, [jobId]);
+
 
   // --------------------------------------------------
   // Screening statistics
@@ -788,7 +883,8 @@ if (selected.length === 0) {
 
               <div>
                 <h2 className="text-lg font-bold text-[#17251b]">
-                  Requisition-wide leaderboard
+  Requisition-wide global ranking
+
                 </h2>
 
                 <p className="text-xs text-stone-500">
@@ -1044,12 +1140,15 @@ Select new candidates from this requisition-wide ranking. Previously submitted c
       )}
 
       {/* Completed */}
-      {job?.status === "completed" && (
-        <div className="flex items-center gap-2 rounded-xl bg-green-50 p-4 text-sm font-medium text-green-800">
-          <CheckCircle2 size={18} />
-          Screening completed successfully.
-        </div>
-      )}
+ {job?.status === "completed" &&
+  queued.length === 0 &&
+  processing.length === 0 &&
+  completed.length === (progress.completed || 0) && (
+    <div className="flex items-center gap-2 rounded-xl bg-green-50 p-4 text-sm font-medium text-green-800">
+      <CheckCircle2 size={18} />
+      Screening completed successfully.
+    </div>
+  )}
     </div>
   );
 }

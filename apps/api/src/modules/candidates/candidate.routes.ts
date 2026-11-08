@@ -261,9 +261,13 @@ candidateRouter.get("/", requireAuth,requireRecruiter, async (_req, res) => {
 
 candidateRouter.get("/:id",requireAuth,requireRecruiter, async (req, res) => {
   try {
-    const candidate = await Candidate.findById(req.params.id)
-      .select("+extractedText")
-      .lean();
+   const candidate = await Candidate.findById(req.params.id)
+  .select("+extractedText")
+  .populate({
+    path: "requisitionId",
+    select: "title clientName location status",
+  })
+  .lean();
 
     if (!candidate) {
       res.status(404).json({ error: "Candidate not found." });
