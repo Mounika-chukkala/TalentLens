@@ -64,7 +64,7 @@ function renewSession(
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: "none" ,
     path: "/",
     maxAge: SESSION_MAX_AGE,
   });

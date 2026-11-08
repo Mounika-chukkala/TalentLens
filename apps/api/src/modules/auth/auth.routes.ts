@@ -15,7 +15,7 @@ const SESSION_MAX_AGE = 10 * 60 * 60 * 1000;
 const sessionCookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
-  sameSite: "lax" as const,
+  sameSite: "none" as const,
   path: "/",
   maxAge: SESSION_MAX_AGE,
 };
@@ -112,7 +112,7 @@ authRouter.post("/logout", (_req, res) => {
   res.clearCookie(SESSION_COOKIE, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: "none",
     path: "/",
   });
 
