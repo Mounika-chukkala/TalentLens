@@ -22,19 +22,70 @@ declare global {
   }
 }
 
+const SESSION_COOKIE = "talentlens_session";
+const SESSION_MAX_AGE = 10 * 60 * 60 * 1000;
+
+function getCookie(
+  cookieHeader: string | undefined,
+  name: string,
+): string | null {
+  if (!cookieHeader) return null;
+
+  const cookie = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`));
+
+  if (!cookie) return null;
+
+  return decodeURIComponent(
+    cookie.substring(name.length + 1),
+  );
+}
+
+function renewSession(
+  res: Response,
+  user: AuthenticatedUser,
+) {
+  const token = jwt.sign(
+    {
+      sub: user.id,
+      role: user.role,
+      clientOrganizationId: user.clientOrganizationId,
+    },
+    JWT_SECRET!,
+    {
+      expiresIn: "10h",
+      issuer: "talentlens-api",
+      audience: "talentlens-web",
+    },
+  );
+
+  res.cookie(SESSION_COOKIE, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: SESSION_MAX_AGE,
+  });
+}
+
 export function requireAuth(
   req: Request,
   res: Response,
   next: NextFunction,
 ): void {
-  const authorization = req.headers.authorization;
+  const token = getCookie(
+    req.headers.cookie,
+    SESSION_COOKIE,
+  );
 
-  if (!authorization?.startsWith("Bearer ")) {
-    res.status(401).json({ message: "Authentication required" });
+  if (!token) {
+    res.status(401).json({
+      message: "Authentication required",
+    });
     return;
   }
-
-  const token = authorization.slice("Bearer ".length).trim();
 
   try {
     const payload = jwt.verify(token, JWT_SECRET!, {
@@ -44,9 +95,12 @@ export function requireAuth(
 
     if (
       typeof payload.sub !== "string" ||
-      (payload.role !== "recruiter" && payload.role !== "client")
+      (payload.role !== "recruiter" &&
+        payload.role !== "client")
     ) {
-      res.status(401).json({ message: "Invalid access token" });
+      res.status(401).json({
+        message: "Invalid access token",
+      });
       return;
     }
 
@@ -57,35 +111,49 @@ export function requireAuth(
       organizationId !== undefined &&
       typeof organizationId !== "string"
     ) {
-      res.status(401).json({ message: "Invalid access token" });
+      res.status(401).json({
+        message: "Invalid access token",
+      });
       return;
     }
 
     if (payload.role === "client" && !organizationId) {
-      res.status(401).json({ message: "Invalid client account" });
+      res.status(401).json({
+        message: "Invalid client account",
+      });
       return;
     }
 
-    req.authUser = {
+    const authenticatedUser: AuthenticatedUser = {
       id: payload.sub,
       role: payload.role,
       clientOrganizationId:
-        typeof organizationId === "string" ? organizationId : null,
+        typeof organizationId === "string"
+          ? organizationId
+          : null,
     };
+
+    req.authUser = authenticatedUser;
+
+    // Extend the inactivity window after successful authentication.
+    renewSession(res, authenticatedUser);
 
     next();
   } catch (error) {
-  console.warn("[AUTH ERROR]", {
-    time: new Date().toISOString(),
-    method: req.method,
-    url: req.originalUrl,
-    reason: error instanceof Error ? error.message : "Unknown authentication error",
-  });
+    console.warn("[AUTH ERROR]", {
+      time: new Date().toISOString(),
+      method: req.method,
+      url: req.originalUrl,
+      reason:
+        error instanceof Error
+          ? error.message
+          : "Unknown authentication error",
+    });
 
-  res.status(401).json({
-    message: "Invalid or expired access token",
-  });
-}
+    res.status(401).json({
+      message: "Invalid or expired session",
+    });
+  }
 }
 
 export function requireRecruiter(

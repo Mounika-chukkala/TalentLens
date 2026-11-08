@@ -9,7 +9,16 @@ import {
 import { requireAuth } from "../../middleware/auth.middleware.js";
 
 export const authRouter = Router();
+const SESSION_COOKIE = "talentlens_session";
+const SESSION_MAX_AGE = 10 * 60 * 60 * 1000;
 
+const sessionCookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax" as const,
+  path: "/",
+  maxAge: SESSION_MAX_AGE,
+};
 const loginSchema = z.object({
   email: z.string().trim().email().max(254),
   password: z.string().min(1).max(128),
@@ -46,10 +55,18 @@ authRouter.post("/login", async (req, res) => {
       return;
     }
 
-    res.status(200).json({
-      message: "Login successful",
-      data: result,
-    });
+   res.cookie(
+  SESSION_COOKIE,
+  result.accessToken,
+  sessionCookieOptions,
+);
+
+res.status(200).json({
+  message: "Login successful",
+  data: {
+    user: result.user,
+  },
+});
   } catch (error) {
     console.error("Login failed:", error);
     res.status(500).json({ message: "Unable to sign in right now." });
@@ -87,4 +104,19 @@ authRouter.get("/me", requireAuth, async (req, res) => {
     console.error("Fetching current user failed:", error);
     res.status(500).json({ message: "Unable to load account." });
   }
+});
+
+
+
+authRouter.post("/logout", (_req, res) => {
+  res.clearCookie(SESSION_COOKIE, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+  });
+
+  res.status(200).json({
+    message: "Logged out successfully",
+  });
 });
